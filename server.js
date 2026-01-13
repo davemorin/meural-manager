@@ -5,8 +5,14 @@ const multer = require('multer');
 const fs = require('fs');
 const Database = require('better-sqlite3');
 const ExifReader = require('exifreader');
+const Anthropic = require('@anthropic-ai/sdk');
 const { CognitoIdentityProviderClient, InitiateAuthCommand } = require('@aws-sdk/client-cognito-identity-provider');
 require('dotenv').config();
+
+// Initialize Claude client for vision
+const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY
+}) : null;
 
 // Configure multer for file uploads
 const upload = multer({ 
@@ -264,9 +270,10 @@ app.post('/api/items/upload', upload.array('photos', 50), async (req, res) => {
         
         const data = await response.json();
         
-        // If upload succeeded, do reverse geocoding and save EXIF
+        // If upload succeeded, do reverse geocoding, vision analysis, and save EXIF
         let location = null;
-        let smartName = null;
+        let smartDescription = null;
+        let visionCaption = null;
         
         if (response.ok && data.data?.id) {
           // Reverse geocode if we have GPS
@@ -277,8 +284,23 @@ app.post('/api/items/upload', upload.array('photos', 50), async (req, res) => {
             }
           }
           
-          // Generate smart name suggestion
-          smartName = generateSmartName(exifData, location);
+          // Analyze image with Claude Vision
+          visionCaption = await analyzeImageWithVision(fileBuffer, file.mimetype);
+          
+          // Generate smart description
+          smartDescription = await generateSmartDescription(exifData, location, visionCaption);
+          
+          // Auto-apply description to Meural if we generated one
+          if (smartDescription) {
+            try {
+              await meuralRequest('PUT', `/items/${data.data.id}`, {
+                description: smartDescription
+              });
+              console.log(`Applied description to ${data.data.id}: ${smartDescription}`);
+            } catch (e) {
+              console.error('Failed to apply description:', e.message);
+            }
+          }
           
           // Save to database
           savePhotoExif(data.data.id, file.originalname, exifData);
@@ -297,9 +319,11 @@ app.post('/api/items/upload', upload.array('photos', 50), async (req, res) => {
             shutter: exifData.shutter_speed,
             iso: exifData.iso,
             gps: exifData.gps_latitude ? true : false,
-            location: location?.display_name || null
+            location: location?.city || location?.display_name || null,
+            season: getSeason(exifData.date_taken)
           } : null,
-          smart_name: smartName,
+          vision_caption: visionCaption,
+          smart_description: smartDescription,
           error: response.ok ? null : data
         });
         
@@ -398,6 +422,133 @@ app.post('/api/items/bulk-delete', async (req, res) => {
         results.push({ id, success: false, error: err.message });
       }
     }
+    res.json({ results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update item metadata (name, description, etc.)
+app.put('/api/items/:id', async (req, res) => {
+  try {
+    const data = await meuralRequest('PUT', `/items/${req.params.id}`, req.body);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Analyze existing photo with vision and generate smart description
+app.post('/api/items/:id/analyze', async (req, res) => {
+  try {
+    // Get the photo from Meural
+    const itemData = await meuralRequest('GET', `/items/${req.params.id}`);
+    if (!itemData.data) {
+      return res.status(404).json({ error: 'Photo not found' });
+    }
+    
+    const photo = itemData.data;
+    
+    // Download the image
+    const imageUrl = photo.image || photo.image_large;
+    if (!imageUrl) {
+      return res.status(400).json({ error: 'No image URL available' });
+    }
+    
+    const imageResponse = await fetch(imageUrl);
+    const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+    
+    // Get EXIF from our database if we have it
+    const stmt = db.prepare('SELECT * FROM photos WHERE meural_id = ?');
+    const exifRecord = stmt.get(req.params.id);
+    
+    // Analyze with vision
+    const visionCaption = await analyzeImageWithVision(imageBuffer, 'image/jpeg');
+    
+    // Build location info
+    let location = null;
+    if (exifRecord?.gps_latitude && exifRecord?.gps_longitude) {
+      location = await reverseGeocode(exifRecord.gps_latitude, exifRecord.gps_longitude);
+    }
+    
+    // Generate smart description
+    const exifData = exifRecord || {};
+    const smartDescription = await generateSmartDescription(exifData, location, visionCaption);
+    
+    res.json({
+      id: req.params.id,
+      current_name: photo.name,
+      current_description: photo.description,
+      vision_caption: visionCaption,
+      location: location?.city || null,
+      season: getSeason(exifData.date_taken),
+      smart_description: smartDescription
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bulk analyze and update photos
+app.post('/api/items/bulk-analyze', async (req, res) => {
+  try {
+    const { ids, apply = false } = req.body;
+    const results = [];
+    
+    for (const id of ids) {
+      try {
+        // Get the photo from Meural
+        const itemData = await meuralRequest('GET', `/items/${id}`);
+        if (!itemData.data) {
+          results.push({ id, success: false, error: 'Not found' });
+          continue;
+        }
+        
+        const photo = itemData.data;
+        const imageUrl = photo.image || photo.image_large;
+        
+        if (!imageUrl) {
+          results.push({ id, success: false, error: 'No image URL' });
+          continue;
+        }
+        
+        // Download and analyze
+        const imageResponse = await fetch(imageUrl);
+        const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+        const visionCaption = await analyzeImageWithVision(imageBuffer, 'image/jpeg');
+        
+        // Get EXIF and location
+        const stmt = db.prepare('SELECT * FROM photos WHERE meural_id = ?');
+        const exifRecord = stmt.get(id);
+        
+        let location = null;
+        if (exifRecord?.gps_latitude && exifRecord?.gps_longitude) {
+          location = await reverseGeocode(exifRecord.gps_latitude, exifRecord.gps_longitude);
+        }
+        
+        const smartDescription = await generateSmartDescription(exifRecord || {}, location, visionCaption);
+        
+        // Apply if requested
+        if (apply && smartDescription) {
+          await meuralRequest('PUT', `/items/${id}`, { description: smartDescription });
+        }
+        
+        results.push({
+          id,
+          success: true,
+          vision_caption: visionCaption,
+          smart_description: smartDescription,
+          applied: apply && smartDescription ? true : false
+        });
+        
+        // Small delay to avoid rate limits
+        await new Promise(r => setTimeout(r, 500));
+        
+      } catch (err) {
+        results.push({ id, success: false, error: err.message });
+      }
+    }
+    
     res.json({ results });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -511,6 +662,104 @@ app.listen(PORT, () => {
   console.log(`Meural Manager running at http://localhost:${PORT}`);
 });
 
+// Get season from date
+function getSeason(dateString) {
+  if (!dateString) return null;
+  const date = new Date(dateString);
+  const month = date.getMonth(); // 0-11
+  
+  // Northern hemisphere seasons
+  if (month >= 2 && month <= 4) return 'Spring';
+  if (month >= 5 && month <= 7) return 'Summer';
+  if (month >= 8 && month <= 10) return 'Fall';
+  return 'Winter';
+}
+
+// Get time of day from date
+function getTimeOfDay(dateString) {
+  if (!dateString) return null;
+  const date = new Date(dateString);
+  const hour = date.getHours();
+  
+  if (hour >= 5 && hour < 8) return 'dawn';
+  if (hour >= 8 && hour < 11) return 'morning';
+  if (hour >= 11 && hour < 14) return 'midday';
+  if (hour >= 14 && hour < 17) return 'afternoon';
+  if (hour >= 17 && hour < 20) return 'golden hour';
+  if (hour >= 20 && hour < 22) return 'dusk';
+  return 'night';
+}
+
+// Analyze image with Claude Vision
+async function analyzeImageWithVision(imageBuffer, mimeType) {
+  if (!anthropic) {
+    console.log('No Anthropic API key configured, skipping vision analysis');
+    return null;
+  }
+  
+  try {
+    const base64Image = imageBuffer.toString('base64');
+    
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 150,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: mimeType || 'image/jpeg',
+              data: base64Image
+            }
+          },
+          {
+            type: 'text',
+            text: `Describe this photo in 3-6 words for a digital frame caption. Focus on the subject, activity, or mood. Be poetic but concise. Examples: "Kids playing in autumn leaves", "Golden hour on the beach", "Birthday candles and laughter", "Quiet morning with coffee". Just give the caption, nothing else.`
+          }
+        ]
+      }]
+    });
+    
+    const caption = response.content[0]?.text?.trim();
+    console.log('Vision caption:', caption);
+    return caption;
+  } catch (err) {
+    console.error('Vision analysis error:', err.message);
+    return null;
+  }
+}
+
+// Generate smart name from EXIF, location, and vision
+async function generateSmartDescription(exifData, location, visionCaption) {
+  const parts = [];
+  
+  // Location first (most grounding context)
+  if (location?.city) {
+    parts.push(location.city);
+  }
+  
+  // Season
+  const season = getSeason(exifData.date_taken);
+  if (season) {
+    parts.push(season);
+  }
+  
+  // Vision caption (the star of the show)
+  if (visionCaption) {
+    parts.push(visionCaption);
+  }
+  
+  // If we have nothing, fall back to date
+  if (parts.length === 0 && exifData.date_taken) {
+    const date = new Date(exifData.date_taken);
+    parts.push(date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }));
+  }
+  
+  return parts.join(' · ') || null;
+}
+
 // Reverse geocode GPS coordinates to location name
 async function reverseGeocode(lat, lon) {
   try {
@@ -546,37 +795,4 @@ async function reverseGeocode(lat, lon) {
   }
 }
 
-// Generate smart filename from EXIF
-function generateSmartName(exifData, location) {
-  const parts = [];
-  
-  // Date: 2024-09-25
-  if (exifData.date_taken) {
-    parts.push(exifData.date_taken.split('T')[0]);
-  }
-  
-  // Location: Rome or Rome-Italy
-  if (location?.city) {
-    let loc = location.city.replace(/\s+/g, '-');
-    if (location.country && location.country !== 'United States') {
-      loc += '_' + location.country.replace(/\s+/g, '-');
-    }
-    parts.push(loc);
-  }
-  
-  // Camera shorthand
-  if (exifData.camera_model) {
-    const cam = exifData.camera_model
-      .replace(/Canon |Nikon |Sony |LEICA |Apple /gi, '')
-      .replace(/\s+/g, '-')
-      .substring(0, 15);
-    parts.push(cam);
-  }
-  
-  // Key settings
-  if (exifData.aperture) {
-    parts.push('f' + exifData.aperture);
-  }
-  
-  return parts.join('_') || 'photo';
-}
+

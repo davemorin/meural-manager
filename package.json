@@ -15,6 +15,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
     "@aws-sdk/client-cognito-identity-provider": "^3.967.0",
     "better-sqlite3": "^12.6.0",
     "cors": "^2.8.5",

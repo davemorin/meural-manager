@@ -331,6 +331,7 @@
         </div>
         <div>
           <button id="upload-photos">+ Upload Photos</button>
+          <button id="ai-describe" disabled>🤖 AI Describe</button>
           <button id="add-to-playlist" disabled>Add to Playlist</button>
           <button id="delete-selected" class="danger" disabled>Delete Selected</button>
         </div>
@@ -564,6 +565,25 @@
       <div class="modal-actions">
         <button class="secondary" onclick="closeUploadModal()">Cancel</button>
         <button id="upload-submit" onclick="submitUpload()" disabled>Upload</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Describe Modal -->
+  <div id="ai-modal" class="modal-overlay hidden">
+    <div class="modal" style="max-width: 700px;">
+      <h2>🤖 AI Photo Descriptions</h2>
+      <p style="color: #888; margin-bottom: 1rem;">Analyzing <span id="ai-count">0</span> photos with Claude Vision...</p>
+      <div id="ai-results" style="max-height: 400px; overflow-y: auto; margin-bottom: 1rem;"></div>
+      <div id="ai-progress" class="hidden" style="margin-bottom: 1rem;">
+        <div style="background: #3a3a3a; border-radius: 4px; overflow: hidden;">
+          <div id="ai-progress-bar" style="height: 4px; background: #3b82f6; width: 0%; transition: width 0.3s;"></div>
+        </div>
+        <p id="ai-status" style="font-size: 0.85rem; color: #888; margin-top: 0.5rem;">Processing...</p>
+      </div>
+      <div class="modal-actions">
+        <button class="secondary" onclick="closeAiModal()">Cancel</button>
+        <button id="ai-apply" onclick="applyAiDescriptions()" disabled>Apply All Descriptions</button>
       </div>
     </div>
   </div>
@@ -842,6 +862,7 @@ function updateSelection() {
   document.getElementById('selected-count').textContent = selectedPhotos.size;
   document.getElementById('delete-selected').disabled = selectedPhotos.size === 0;
   document.getElementById('add-to-playlist').disabled = selectedPhotos.size === 0;
+  document.getElementById('ai-describe').disabled = selectedPhotos.size === 0;
   
   document.querySelectorAll('.card').forEach(card => {
     const id = parseInt(card.dataset.id);
@@ -897,6 +918,106 @@ document.getElementById('add-to-playlist').onclick = () => {
 
 function closePlaylistModal() {
   document.getElementById('playlist-modal').classList.add('hidden');
+}
+
+// AI Describe
+let aiResults = [];
+
+document.getElementById('ai-describe').onclick = () => {
+  aiResults = [];
+  document.getElementById('ai-count').textContent = selectedPhotos.size;
+  document.getElementById('ai-results').innerHTML = '';
+  document.getElementById('ai-progress').classList.remove('hidden');
+  document.getElementById('ai-progress-bar').style.width = '0%';
+  document.getElementById('ai-apply').disabled = true;
+  document.getElementById('ai-modal').classList.remove('hidden');
+  
+  runAiAnalysis();
+};
+
+async function runAiAnalysis() {
+  const ids = Array.from(selectedPhotos);
+  const resultsDiv = document.getElementById('ai-results');
+  const progressBar = document.getElementById('ai-progress-bar');
+  const statusText = document.getElementById('ai-status');
+  
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    const photo = photos.find(p => p.id === id);
+    
+    statusText.textContent = `Analyzing ${i + 1} of ${ids.length}...`;
+    progressBar.style.width = `${((i + 1) / ids.length) * 100}%`;
+    
+    try {
+      const result = await api(`/items/${id}/analyze`, { method: 'POST' });
+      aiResults.push({ id, ...result });
+      
+      // Add result to UI
+      const div = document.createElement('div');
+      div.style.cssText = 'background: #2a2a2a; border-radius: 8px; padding: 1rem; margin-bottom: 0.5rem; display: flex; gap: 1rem; align-items: center;';
+      div.innerHTML = `
+        <img src="${photo?.image || photo?.thumbnail || ''}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px;">
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-size: 0.85rem; color: #888; margin-bottom: 0.25rem;">Current: ${result.current_description || result.current_name || 'None'}</div>
+          <div style="font-weight: 500; color: #22c55e;">${result.smart_description || 'No description generated'}</div>
+          <div style="font-size: 0.75rem; color: #666; margin-top: 0.25rem;">
+            ${result.location ? '📍 ' + result.location : ''} 
+            ${result.season ? '🗓 ' + result.season : ''}
+            ${result.vision_caption ? '🤖 ' + result.vision_caption : ''}
+          </div>
+        </div>
+      `;
+      resultsDiv.appendChild(div);
+      
+    } catch (err) {
+      console.error(`Failed to analyze ${id}:`, err);
+      aiResults.push({ id, error: err.message });
+    }
+  }
+  
+  statusText.textContent = `Done! ${aiResults.filter(r => r.smart_description).length} descriptions generated.`;
+  document.getElementById('ai-apply').disabled = aiResults.filter(r => r.smart_description).length === 0;
+}
+
+async function applyAiDescriptions() {
+  const applyBtn = document.getElementById('ai-apply');
+  applyBtn.disabled = true;
+  applyBtn.textContent = 'Applying...';
+  
+  const statusText = document.getElementById('ai-status');
+  let applied = 0;
+  
+  for (const result of aiResults) {
+    if (result.smart_description) {
+      try {
+        await api(`/items/${result.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ description: result.smart_description })
+        });
+        applied++;
+        statusText.textContent = `Applied ${applied} descriptions...`;
+      } catch (err) {
+        console.error(`Failed to apply to ${result.id}:`, err);
+      }
+    }
+  }
+  
+  statusText.textContent = `✓ Applied ${applied} descriptions!`;
+  applyBtn.textContent = 'Done!';
+  
+  // Refresh photos
+  await loadPhotos();
+  
+  setTimeout(() => {
+    closeAiModal();
+    selectedPhotos.clear();
+    updateSelection();
+  }, 1500);
+}
+
+function closeAiModal() {
+  document.getElementById('ai-modal').classList.add('hidden');
+  aiResults = [];
 }
 
 async function confirmAddToPlaylist() {
@@ -1107,15 +1228,15 @@ async function submitUpload() {
     
     progressBar.style.width = '100%';
     
-    // Show detailed results with EXIF
+    // Show detailed results with EXIF and AI description
     let statusHtml = `<strong>Done!</strong> ${successful} uploaded${failed > 0 ? `, ${failed} failed` : ''}<br><br>`;
     data.results.filter(r => r.success).forEach(r => {
       statusHtml += `<div style="font-size: 0.8rem; margin-bottom: 0.5rem; padding: 0.5rem; background: #1a1a1a; border-radius: 4px;">
         <div><strong>${r.filename}</strong></div>
-        ${r.exif?.date_taken ? `<div style="color: #888;">📅 ${new Date(r.exif.date_taken).toLocaleString()}</div>` : ''}
-        ${r.exif?.camera ? `<div style="color: #888;">📷 ${r.exif.camera}</div>` : ''}
         ${r.exif?.location ? `<div style="color: #888;">📍 ${r.exif.location}</div>` : ''}
-        ${r.smart_name ? `<div style="color: #3b82f6;">💡 Suggested: ${r.smart_name}</div>` : ''}
+        ${r.exif?.season ? `<div style="color: #888;">🗓 ${r.exif.season}</div>` : ''}
+        ${r.vision_caption ? `<div style="color: #888;">🤖 ${r.vision_caption}</div>` : ''}
+        ${r.smart_description ? `<div style="color: #22c55e; font-weight: 500;">✓ ${r.smart_description}</div>` : ''}
       </div>`;
     });
     statusText.innerHTML = statusHtml;
