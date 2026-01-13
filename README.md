@@ -1,53 +1,125 @@
-# Meural Manager
+# Meural Manager 🖼️
 
-A simple web interface to manage your Meural frames — bulk delete photos, create playlists, assign playlists to frames.
+A self-hosted web interface for managing your [Meural](https://www.netgear.com/home/digital-art-canvas/meural-canvas/) digital art frames. Finally—bulk operations, playlist management, and EXIF tracking that the official app doesn't provide.
 
-## Setup
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
-1. Copy `.env.example` to `.env` and add your Meural credentials:
-   ```bash
-   cp .env.example .env
-   ```
+## Why I Built This
 
-2. Edit `.env` with your Meural account email and password (same as the app).
+I have four Meural frames around my house displaying family photos. The official app is... fine for casual use, but I kept hitting walls:
 
-3. Install dependencies and start:
-   ```bash
-   npm install
-   npm start
-   ```
+- **No bulk delete.** When you're at 650/700 photos and need to make room, deleting one at a time is painful.
+- **No easy playlist management.** I wanted seasonal rotations, room-specific collections, curated sets.
+- **No EXIF visibility.** These are my photos—I want to know what camera, lens, and settings captured each memory.
 
-4. Open http://localhost:3333 in your browser.
+So I built this over a weekend. It runs on a Mac mini on my local network, and now managing my Meural library takes minutes instead of hours.
 
 ## Features
 
-### Photos Tab
-- View all your photos in a grid
-- See count vs. 700 limit (with warning colors)
-- Multi-select photos (click to toggle, Select All/None buttons)
-- Bulk delete selected photos
-- Add selected photos to a playlist
+### 📷 Photo Management
+- Grid view of your entire library with sorting and filtering
+- **Bulk select and delete** — finally
+- Filter by orientation (portrait/landscape), year, camera
+- Add photos directly from browser with drag & drop upload
+- EXIF extraction on upload (camera, lens, GPS, settings)
+- Reverse geocoding for location tagging
 
-### Playlists Tab
-- View all playlists
-- Create new playlists
-- View items in a playlist
-- Remove items from a playlist
-- Delete playlists
+### 📋 Playlist Management  
+- Create, edit, and delete playlists
+- Add/remove photos from playlists
+- View playlist contents in a clean grid
 
-### Frames Tab
-- View all 4 frames
-- See online/offline status
-- Assign a playlist to each frame
+### 🖼️ Frame Control
+- See all your frames and their online status
+- Assign playlists to specific frames
+- Quick switching between collections
 
-## Tech
+### 📊 EXIF Library
+- Track camera gear usage across your collection
+- Filter photos by camera, lens, year, GPS, aperture range
+- See which lenses you actually use
+- Location data extraction and display
 
-- Backend: Express.js wrapping the Meural REST API
-- Frontend: Vanilla HTML/CSS/JS (no build step)
-- Runs on Mac mini, accessible from any device on your network
+## Quick Start
 
-## Notes
+```bash
+# Clone the repo
+git clone https://github.com/davemorin/meural-manager.git
+cd meural-manager
 
-- The 700 photo limit is enforced by Meural, not this app
-- Deleting a photo removes it from all playlists automatically
-- Auth token is cached for 1 hour
+# Install dependencies
+npm install
+
+# Set up your credentials
+cp .env.example .env
+# Edit .env with your Meural account email
+# Create .meural-password with your password (handles special characters)
+
+# Run it
+npm start
+```
+
+Open `http://localhost:3333` — or access it from any device on your network.
+
+## Configuration
+
+Create a `.env` file:
+
+```env
+MEURAL_USERNAME=your@email.com
+PORT=3333
+```
+
+And a `.meural-password` file with just your password (this handles passwords with special characters like `#`):
+
+```
+yourpassword
+```
+
+## Tech Stack
+
+- **Backend:** Express.js wrapping the Meural REST API + AWS Cognito auth
+- **Frontend:** Vanilla HTML/CSS/JS (no build step, no framework bloat)
+- **Database:** SQLite for EXIF metadata storage
+- **APIs:** Nominatim (OpenStreetMap) for reverse geocoding
+
+## API Notes
+
+This wraps Meural's private API, which uses AWS Cognito for authentication. The API isn't officially documented, but it's been stable. Key endpoints:
+
+- `GET /user` — account info and storage limits
+- `GET /user/items` — your photo library
+- `GET /user/galleries` — your playlists
+- `GET /user/devices` — your frames
+- `POST /items` — upload photos
+- `DELETE /items/:id` — delete photos
+
+## Running as a Service (macOS)
+
+If you want this running 24/7 on a Mac mini or similar:
+
+```bash
+# Using pm2
+npm install -g pm2
+pm2 start server.js --name meural-manager
+pm2 save
+pm2 startup
+```
+
+## Known Limitations
+
+- Meural enforces a 700 photo limit—this tool shows you where you are, but can't bypass it
+- The Meural API occasionally rate limits; bulk operations include small delays
+- No official API documentation means things could break if Netgear changes their backend
+
+## Contributing
+
+Issues and PRs welcome. This scratches my itch, but happy to make it better for others.
+
+## License
+
+MIT — do whatever you want with it.
+
+---
+
+Built with ☕ and mild frustration at the official Meural app.
