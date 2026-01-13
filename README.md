@@ -108,7 +108,6 @@ pm2 startup
 
 ## Known Limitations
 
-- Meural enforces a 700 photo limit—this tool shows you where you are, but can't bypass it
 - The Meural API occasionally rate limits; bulk operations include small delays
 - No official API documentation means things could break if Netgear changes their backend
 
