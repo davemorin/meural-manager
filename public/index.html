@@ -858,8 +858,8 @@ function renderFrames() {
   }
   
   container.innerHTML = frames.map(frame => {
-    // Try different possible field names for the current gallery
-    const currentGalleryId = frame.currentGalleryId || frame.frameGalleryId || frame.galleryId || frame.gallery?.id || null;
+    // Current gallery is in frameStatus.currentGallery
+    const currentGalleryId = frame.frameStatus?.currentGallery || frame.frameStatus?.currentlyPlaying?.id || null;
     const currentPlaylist = currentGalleryId ? playlists.find(pl => pl.id === currentGalleryId) : null;
     
     return `
