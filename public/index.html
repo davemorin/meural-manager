@@ -788,7 +788,8 @@ function renderPhotos() {
       <img src="${photo.image || photo.thumbnail || ''}" alt="${photo.name || ''}" loading="lazy">
       <div class="card-info">
         <div class="card-title">${photo.name || 'Untitled'}</div>
-        <div class="card-subtitle">${photo.author || ''}</div>
+        ${photo.description ? `<div class="card-subtitle" style="color: #22c55e;">${photo.description}</div>` : ''}
+        ${!photo.description && photo.author ? `<div class="card-subtitle">${photo.author}</div>` : ''}
       </div>
     </div>
   `).join('');
