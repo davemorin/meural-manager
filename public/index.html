@@ -59,6 +59,11 @@
       border-bottom-color: #3b82f6;
     }
     
+    @keyframes slideUp {
+      from { transform: translateX(-50%) translateY(20px); opacity: 0; }
+      to { transform: translateX(-50%) translateY(0); opacity: 1; }
+    }
+    
     main { padding: 2rem; }
     
     .toolbar {
@@ -589,6 +594,37 @@
   </div>
 
 <script>
+// Toast notification
+function showToast(message, type = 'success') {
+  // Remove existing toast
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+  
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.style.cssText = `
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 1rem 2rem;
+    border-radius: 8px;
+    background: ${type === 'error' ? '#ef4444' : '#22c55e'};
+    color: white;
+    font-weight: 500;
+    z-index: 10000;
+    animation: slideUp 0.3s ease;
+  `;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transition = 'opacity 0.3s';
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
 // State
 let photos = [];
 let filteredPhotos = [];
@@ -900,16 +936,27 @@ async function confirmDelete() {
   btn.textContent = 'Deleting...';
   btn.disabled = true;
   
-  await api('/items/bulk-delete', {
-    method: 'POST',
-    body: JSON.stringify({ ids })
-  });
+  try {
+    const result = await api('/items/bulk-delete', {
+      method: 'POST',
+      body: JSON.stringify({ ids })
+    });
+    
+    const successful = result.results?.filter(r => r.success).length || 0;
+    const failed = result.results?.filter(r => !r.success).length || 0;
+    
+    showToast(`Deleted ${successful} photo${successful !== 1 ? 's' : ''}${failed > 0 ? ` (${failed} failed)` : ''}`);
+    
+    selectedPhotos.clear();
+    await loadPhotos();
+    await loadUserInfo();
+    updateSelection();
+  } catch (err) {
+    showToast(`Delete failed: ${err.message}`, 'error');
+  }
   
-  selectedPhotos.clear();
-  await loadPhotos();
-  await loadUserInfo(); // Refresh storage
-  updateSelection();
   btn.textContent = 'Delete Selected';
+  btn.disabled = false;
 }
 
 // Add to playlist
@@ -1028,15 +1075,36 @@ async function confirmAddToPlaylist() {
   const playlistId = document.getElementById('playlist-select').value;
   if (!playlistId) return;
   
+  const count = selectedPhotos.size;
+  const playlistName = document.getElementById('playlist-select').selectedOptions[0]?.text || 'playlist';
+  
   closePlaylistModal();
   
+  // Show progress on button
+  const btn = document.getElementById('add-to-playlist');
+  btn.textContent = 'Adding...';
+  btn.disabled = true;
+  
+  let added = 0;
+  let failed = 0;
+  
   for (const itemId of selectedPhotos) {
-    await api(`/galleries/${playlistId}/items/${itemId}`, { method: 'POST' });
+    try {
+      await api(`/galleries/${playlistId}/items/${itemId}`, { method: 'POST' });
+      added++;
+    } catch (err) {
+      failed++;
+    }
   }
+  
+  showToast(`Added ${added} photo${added !== 1 ? 's' : ''} to "${playlistName}"${failed > 0 ? ` (${failed} failed)` : ''}`);
   
   selectedPhotos.clear();
   updateSelection();
   await loadPlaylists();
+  
+  btn.textContent = 'Add to Playlist';
+  btn.disabled = false;
 }
 
 // Playlist management
