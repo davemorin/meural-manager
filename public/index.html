@@ -1177,8 +1177,8 @@ function handleFiles(files) {
   
   for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
-    if (file.size > 20 * 1024 * 1024) {
-      alert(`${file.name} is larger than 20MB and will be skipped`);
+    if (file.size > 100 * 1024 * 1024) {
+      alert(`${file.name} is larger than 100MB and will be skipped`);
       continue;
     }
     
@@ -1237,6 +1237,7 @@ async function submitUpload() {
     data.results.filter(r => r.success).forEach(r => {
       statusHtml += `<div style="font-size: 0.8rem; margin-bottom: 0.5rem; padding: 0.5rem; background: #1a1a1a; border-radius: 4px;">
         <div><strong>${r.filename}</strong></div>
+        ${r.resized ? `<div style="color: #f59e0b;">📐 Resized: ${r.resized.from} → ${r.resized.to}</div>` : ''}
         ${r.exif?.location ? `<div style="color: #888;">📍 ${r.exif.location}</div>` : ''}
         ${r.exif?.season ? `<div style="color: #888;">🗓 ${r.exif.season}</div>` : ''}
         ${r.vision_caption ? `<div style="color: #888;">🤖 ${r.vision_caption}</div>` : ''}

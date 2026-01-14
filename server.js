@@ -6,6 +6,7 @@ const fs = require('fs');
 const Database = require('better-sqlite3');
 const ExifReader = require('exifreader');
 const Anthropic = require('@anthropic-ai/sdk');
+const sharp = require('sharp');
 const { CognitoIdentityProviderClient, InitiateAuthCommand } = require('@aws-sdk/client-cognito-identity-provider');
 require('dotenv').config();
 
@@ -14,10 +15,10 @@ const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY
 }) : null;
 
-// Configure multer for file uploads
+// Configure multer for file uploads (100MB limit, will resize before upload)
 const upload = multer({ 
   dest: '/tmp/meural-uploads/',
-  limits: { fileSize: 20 * 1024 * 1024 } // 20MB max per file
+  limits: { fileSize: 100 * 1024 * 1024 } // 100MB max per file (will resize)
 });
 
 // Initialize SQLite database for EXIF storage
@@ -250,13 +251,18 @@ app.post('/api/items/upload', upload.array('photos', 50), async (req, res) => {
     for (const file of req.files) {
       try {
         // Read file
-        const fileBuffer = fs.readFileSync(file.path);
+        let fileBuffer = fs.readFileSync(file.path);
         
-        // Extract EXIF before upload
+        // Extract EXIF before any processing
         const exifData = extractExif(fileBuffer, file.originalname);
         
+        // Resize if needed (over 20MB)
+        const resizeResult = await resizeIfNeeded(fileBuffer, file.originalname);
+        fileBuffer = resizeResult.buffer;
+        
         // Create proper form data for upload
-        const blob = new Blob([fileBuffer], { type: file.mimetype });
+        const mimeType = resizeResult.resized ? 'image/jpeg' : file.mimetype;
+        const blob = new Blob([fileBuffer], { type: mimeType });
         const form = new FormData();
         form.append('image', blob, file.originalname);
         
@@ -313,6 +319,11 @@ app.post('/api/items/upload', upload.array('photos', 50), async (req, res) => {
           success: response.ok, 
           meural_id: response.ok ? data.data?.id : null,
           data: response.ok ? data : null,
+          resized: resizeResult.resized ? {
+            from: `${(resizeResult.originalSize / 1024 / 1024).toFixed(1)}MB`,
+            to: `${(resizeResult.newSize / 1024 / 1024).toFixed(1)}MB`,
+            dimensions: resizeResult.dimensions
+          } : null,
           exif: response.ok ? {
             date_taken: exifData.date_taken,
             camera: exifData.camera_model,
@@ -666,6 +677,57 @@ const PORT = process.env.PORT || 3333;
 app.listen(PORT, () => {
   console.log(`Meural Manager running at http://localhost:${PORT}`);
 });
+
+// Resize image if too large for Meural (20MB limit, 1920x1080 display)
+async function resizeIfNeeded(fileBuffer, filename) {
+  const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+  const MAX_DIMENSION = 3000; // Max pixels on long edge
+  const QUALITY = 90;
+  
+  // If file is small enough, return as-is
+  if (fileBuffer.length <= MAX_FILE_SIZE) {
+    return { buffer: fileBuffer, resized: false };
+  }
+  
+  console.log(`Resizing ${filename}: ${(fileBuffer.length / 1024 / 1024).toFixed(1)}MB exceeds 20MB limit`);
+  
+  try {
+    // Get image metadata
+    const metadata = await sharp(fileBuffer).metadata();
+    
+    // Calculate new dimensions (maintain aspect ratio)
+    let width = metadata.width;
+    let height = metadata.height;
+    
+    if (width > height && width > MAX_DIMENSION) {
+      height = Math.round(height * (MAX_DIMENSION / width));
+      width = MAX_DIMENSION;
+    } else if (height > MAX_DIMENSION) {
+      width = Math.round(width * (MAX_DIMENSION / height));
+      height = MAX_DIMENSION;
+    }
+    
+    // Resize and compress
+    const resizedBuffer = await sharp(fileBuffer)
+      .resize(width, height, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: QUALITY, mozjpeg: true })
+      .toBuffer();
+    
+    console.log(`Resized ${filename}: ${(fileBuffer.length / 1024 / 1024).toFixed(1)}MB → ${(resizedBuffer.length / 1024 / 1024).toFixed(1)}MB (${width}x${height})`);
+    
+    return { 
+      buffer: resizedBuffer, 
+      resized: true,
+      originalSize: fileBuffer.length,
+      newSize: resizedBuffer.length,
+      dimensions: { width, height }
+    };
+  } catch (err) {
+    console.error(`Failed to resize ${filename}:`, err.message);
+    // Return original if resize fails
+    return { buffer: fileBuffer, resized: false, error: err.message };
+  }
+}
 
 // Get season from date
 function getSeason(dateString) {
