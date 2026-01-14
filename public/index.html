@@ -806,6 +806,7 @@ async function loadPlaylists() {
 async function loadFrames() {
   const data = await api('/devices');
   frames = data.data || [];
+  console.log('Frames data:', frames); // Debug: see what fields are available
   document.getElementById('frame-count').textContent = frames.length;
   renderFrames();
 }
@@ -856,23 +857,29 @@ function renderFrames() {
     return;
   }
   
-  container.innerHTML = frames.map(frame => `
+  container.innerHTML = frames.map(frame => {
+    // Try different possible field names for the current gallery
+    const currentGalleryId = frame.currentGalleryId || frame.frameGalleryId || frame.galleryId || frame.gallery?.id || null;
+    const currentPlaylist = currentGalleryId ? playlists.find(pl => pl.id === currentGalleryId) : null;
+    
+    return `
     <div class="frame-card">
       <div class="frame-name">${frame.alias || frame.name || 'Frame'}</div>
       <div class="frame-status ${frame.status === 'online' ? 'online' : ''}">
         ${frame.status || 'unknown'}
       </div>
+      ${currentPlaylist ? `<div style="color: #22c55e; font-size: 0.9rem; margin-bottom: 0.5rem;">▶ ${currentPlaylist.name}</div>` : ''}
       <div class="frame-playlist">
-        <label>Active Playlist</label>
+        <label>Playlist</label>
         <select onchange="assignPlaylist(${frame.id}, this.value)">
           <option value="">None</option>
           ${playlists.map(pl => `
-            <option value="${pl.id}" ${frame.currentGalleryId === pl.id ? 'selected' : ''}>${pl.name}</option>
+            <option value="${pl.id}" ${currentGalleryId === pl.id ? 'selected' : ''}>${pl.name}</option>
           `).join('')}
         </select>
       </div>
     </div>
-  `).join('');
+  `}).join('');
 }
 
 function updatePhotoCount() {
