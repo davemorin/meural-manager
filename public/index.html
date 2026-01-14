@@ -992,7 +992,10 @@ async function applyAiDescriptions() {
       try {
         await api(`/items/${result.id}`, {
           method: 'PUT',
-          body: JSON.stringify({ description: result.smart_description })
+          body: JSON.stringify({ 
+            name: result.smart_description,
+            description: result.smart_description 
+          })
         });
         applied++;
         statusText.textContent = `Applied ${applied} descriptions...`;

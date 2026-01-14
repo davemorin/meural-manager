@@ -293,10 +293,12 @@ app.post('/api/items/upload', upload.array('photos', 50), async (req, res) => {
           // Auto-apply description to Meural if we generated one
           if (smartDescription) {
             try {
-              await meuralRequest('PUT', `/items/${data.data.id}`, {
+              // Try both name and description fields
+              const updateResult = await meuralRequest('PUT', `/items/${data.data.id}`, {
+                name: smartDescription,
                 description: smartDescription
               });
-              console.log(`Applied description to ${data.data.id}: ${smartDescription}`);
+              console.log(`Applied description to ${data.data.id}: ${smartDescription}`, updateResult);
             } catch (e) {
               console.error('Failed to apply description:', e.message);
             }
@@ -530,7 +532,10 @@ app.post('/api/items/bulk-analyze', async (req, res) => {
         
         // Apply if requested
         if (apply && smartDescription) {
-          await meuralRequest('PUT', `/items/${id}`, { description: smartDescription });
+          await meuralRequest('PUT', `/items/${id}`, { 
+            name: smartDescription,
+            description: smartDescription 
+          });
         }
         
         results.push({
