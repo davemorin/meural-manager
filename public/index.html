@@ -169,6 +169,7 @@
       font-weight: bold;
     }
     
+    /* Playlists */
     .playlist-list {
       display: flex;
       flex-direction: column;
@@ -193,6 +194,7 @@
     .playlist-name { font-weight: 500; }
     .playlist-count { color: #888; font-size: 0.85rem; }
     
+    /* Frames */
     .frames-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -240,6 +242,7 @@
       font-size: 0.9rem;
     }
     
+    /* Loading / Empty states */
     .loading, .empty {
       text-align: center;
       padding: 4rem;
@@ -261,6 +264,7 @@
     
     @keyframes spin { to { transform: rotate(360deg); } }
     
+    /* Modal */
     .modal-overlay {
       position: fixed;
       inset: 0;
@@ -318,6 +322,7 @@
     <button class="active" data-tab="photos">Photos</button>
     <button data-tab="playlists">Playlists</button>
     <button data-tab="frames">Frames</button>
+    <button data-tab="exif">EXIF Library</button>
   </nav>
   
   <main>
@@ -331,6 +336,7 @@
         </div>
         <div>
           <button id="upload-photos">+ Upload Photos</button>
+          <button id="ai-describe" disabled>🤖 AI Describe</button>
           <button id="add-to-playlist" disabled>Add to Playlist</button>
           <button id="delete-selected" class="danger" disabled>Delete Selected</button>
         </div>
@@ -342,8 +348,11 @@
             <select id="sort-select" onchange="applyFilters()" style="padding: 0.4rem 0.6rem; border-radius: 4px; border: 1px solid #4a4a4a; background: #2a2a2a; color: #fff; font-size: 0.85rem;">
               <option value="createdAt-desc">Uploaded (newest)</option>
               <option value="createdAt-asc">Uploaded (oldest)</option>
+              <option value="photoDate-desc">Photo Date (newest)</option>
+              <option value="photoDate-asc">Photo Date (oldest)</option>
               <option value="name-asc">Name A-Z</option>
               <option value="name-desc">Name Z-A</option>
+              <option value="author-asc">Author A-Z</option>
               <option value="size-desc">Size (largest)</option>
               <option value="size-asc">Size (smallest)</option>
             </select>
@@ -359,6 +368,12 @@
           <div>
             <label style="font-size: 0.75rem; color: #888; display: block; margin-bottom: 0.25rem;">Year</label>
             <select id="filter-year" onchange="applyFilters()" style="padding: 0.4rem 0.6rem; border-radius: 4px; border: 1px solid #4a4a4a; background: #2a2a2a; color: #fff; font-size: 0.85rem;">
+              <option value="">All</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 0.75rem; color: #888; display: block; margin-bottom: 0.25rem;">Camera</label>
+            <select id="filter-camera" onchange="applyFilters()" style="padding: 0.4rem 0.6rem; border-radius: 4px; border: 1px solid #4a4a4a; background: #2a2a2a; color: #fff; font-size: 0.85rem; max-width: 150px;">
               <option value="">All</option>
             </select>
           </div>
@@ -394,6 +409,106 @@
       <div id="frames-grid" class="frames-grid">
         <div class="loading">Loading frames</div>
       </div>
+    </section>
+    
+    <!-- EXIF Library Tab -->
+    <section id="exif-tab" class="hidden">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <h2 style="font-size: 1.1rem; font-weight: 500;">EXIF Library</h2>
+          <span id="exif-count" style="color: #888; font-size: 0.9rem;"></span>
+        </div>
+      </div>
+      
+      <!-- EXIF Filters -->
+      <div class="toolbar" style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid #3a3a3a;">
+        <div class="toolbar-left" style="gap: 0.75rem; flex-wrap: wrap;">
+          <div>
+            <label style="font-size: 0.75rem; color: #888; display: block; margin-bottom: 0.25rem;">Camera</label>
+            <select id="exif-filter-camera" onchange="applyExifFilters()" style="padding: 0.4rem 0.6rem; border-radius: 4px; border: 1px solid #4a4a4a; background: #2a2a2a; color: #fff; font-size: 0.85rem;">
+              <option value="">All Cameras</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 0.75rem; color: #888; display: block; margin-bottom: 0.25rem;">Lens</label>
+            <select id="exif-filter-lens" onchange="applyExifFilters()" style="padding: 0.4rem 0.6rem; border-radius: 4px; border: 1px solid #4a4a4a; background: #2a2a2a; color: #fff; font-size: 0.85rem; max-width: 200px;">
+              <option value="">All Lenses</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 0.75rem; color: #888; display: block; margin-bottom: 0.25rem;">Year</label>
+            <select id="exif-filter-year" onchange="applyExifFilters()" style="padding: 0.4rem 0.6rem; border-radius: 4px; border: 1px solid #4a4a4a; background: #2a2a2a; color: #fff; font-size: 0.85rem;">
+              <option value="">All Years</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 0.75rem; color: #888; display: block; margin-bottom: 0.25rem;">GPS</label>
+            <select id="exif-filter-gps" onchange="applyExifFilters()" style="padding: 0.4rem 0.6rem; border-radius: 4px; border: 1px solid #4a4a4a; background: #2a2a2a; color: #fff; font-size: 0.85rem;">
+              <option value="">Any</option>
+              <option value="yes">Has GPS</option>
+              <option value="no">No GPS</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 0.75rem; color: #888; display: block; margin-bottom: 0.25rem;">Aperture</label>
+            <select id="exif-filter-aperture" onchange="applyExifFilters()" style="padding: 0.4rem 0.6rem; border-radius: 4px; border: 1px solid #4a4a4a; background: #2a2a2a; color: #fff; font-size: 0.85rem;">
+              <option value="">Any</option>
+              <option value="wide">Wide (f/1.0-2.8)</option>
+              <option value="mid">Mid (f/2.8-5.6)</option>
+              <option value="narrow">Narrow (f/5.6+)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 0.75rem; color: #888; display: block; margin-bottom: 0.25rem;">Sort</label>
+            <select id="exif-sort" onchange="applyExifFilters()" style="padding: 0.4rem 0.6rem; border-radius: 4px; border: 1px solid #4a4a4a; background: #2a2a2a; color: #fff; font-size: 0.85rem;">
+              <option value="date-desc">Date (newest)</option>
+              <option value="date-asc">Date (oldest)</option>
+              <option value="camera">Camera</option>
+              <option value="iso-desc">ISO (highest)</option>
+              <option value="iso-asc">ISO (lowest)</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <span id="exif-filter-count" style="font-size: 0.85rem; color: #888;"></span>
+        </div>
+      </div>
+      
+      <!-- Stats Cards -->
+      <div id="exif-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+        <div class="frame-card">
+          <div style="font-size: 0.85rem; color: #888;">Total with EXIF</div>
+          <div id="stat-total" style="font-size: 2rem; font-weight: 600;">-</div>
+        </div>
+        <div class="frame-card">
+          <div style="font-size: 0.85rem; color: #888;">With GPS</div>
+          <div id="stat-gps" style="font-size: 2rem; font-weight: 600;">-</div>
+        </div>
+        <div class="frame-card">
+          <div style="font-size: 0.85rem; color: #888;">Cameras</div>
+          <div id="stat-cameras" style="font-size: 2rem; font-weight: 600;">-</div>
+        </div>
+        <div class="frame-card">
+          <div style="font-size: 0.85rem; color: #888;">Lenses</div>
+          <div id="stat-lenses" style="font-size: 2rem; font-weight: 600;">-</div>
+        </div>
+      </div>
+      
+      <!-- Camera breakdown -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+        <div>
+          <h3 style="font-size: 0.95rem; margin-bottom: 1rem; color: #888;">By Camera</h3>
+          <div id="camera-list" class="playlist-list"></div>
+        </div>
+        <div>
+          <h3 style="font-size: 0.95rem; margin-bottom: 1rem; color: #888;">By Lens</h3>
+          <div id="lens-list" class="playlist-list"></div>
+        </div>
+      </div>
+      
+      <!-- Photo list with EXIF -->
+      <h3 style="font-size: 0.95rem; margin-bottom: 1rem; color: #888;">Recent Uploads with EXIF</h3>
+      <div id="exif-photos" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
     </section>
   </main>
   
@@ -459,9 +574,29 @@
     </div>
   </div>
 
+  <!-- AI Describe Modal -->
+  <div id="ai-modal" class="modal-overlay hidden">
+    <div class="modal" style="max-width: 700px;">
+      <h2>🤖 AI Photo Descriptions</h2>
+      <p style="color: #888; margin-bottom: 1rem;">Analyzing <span id="ai-count">0</span> photos with Claude Vision...</p>
+      <div id="ai-results" style="max-height: 400px; overflow-y: auto; margin-bottom: 1rem;"></div>
+      <div id="ai-progress" class="hidden" style="margin-bottom: 1rem;">
+        <div style="background: #3a3a3a; border-radius: 4px; overflow: hidden;">
+          <div id="ai-progress-bar" style="height: 4px; background: #3b82f6; width: 0%; transition: width 0.3s;"></div>
+        </div>
+        <p id="ai-status" style="font-size: 0.85rem; color: #888; margin-top: 0.5rem;">Processing...</p>
+      </div>
+      <div class="modal-actions">
+        <button class="secondary" onclick="closeAiModal()">Cancel</button>
+        <button id="ai-apply" onclick="applyAiDescriptions()" disabled>Apply All Descriptions</button>
+      </div>
+    </div>
+  </div>
+
 <script>
 // Toast notification
 function showToast(message, type = 'success') {
+  // Remove existing toast
   const existing = document.querySelector('.toast');
   if (existing) existing.remove();
   
@@ -519,6 +654,7 @@ async function loadUserInfo() {
     usedEl.textContent = usedGB;
     document.getElementById('storage-total').textContent = totalGB;
     
+    // Color code based on usage
     const pct = userInfo.usedStorage / userInfo.totalStorage;
     usedEl.classList.remove('warning', 'danger');
     if (pct > 0.9) usedEl.classList.add('danger');
@@ -555,23 +691,74 @@ async function loadPhotos() {
 }
 
 function populateFilterOptions() {
+  // Get unique years
   const years = [...new Set(photos.map(p => p.year).filter(Boolean))].sort().reverse();
   const yearSelect = document.getElementById('filter-year');
   yearSelect.innerHTML = '<option value="">All</option>' + 
     years.map(y => `<option value="${y}">${y}</option>`).join('');
+  
+  // Get unique cameras (simplified)
+  const cameras = [...new Set(photos.map(p => {
+    if (!p.medium) return null;
+    // Extract camera model (first part before comma)
+    const match = p.medium.match(/^([^,]+)/);
+    return match ? match[1].trim() : null;
+  }).filter(Boolean))].sort();
+  
+  const cameraSelect = document.getElementById('filter-camera');
+  cameraSelect.innerHTML = '<option value="">All</option>' + 
+    cameras.map(c => `<option value="${c}">${c}</option>`).join('');
+}
+
+// Parse photo date from name/description/year (best effort)
+function parsePhotoDate(photo) {
+  const text = photo.name + ' ' + (photo.description || '');
+  
+  // Try various date patterns
+  // Pattern: DD-MM-YYYY or D-M-YYYY (European format common in your photos)
+  let match = text.match(/(\d{1,2})-(\d{1,2})-(\d{4})/);
+  if (match) {
+    return new Date(match[3], match[2] - 1, match[1]).getTime();
+  }
+  
+  // Pattern: MM/DD/YY or M/D/YY (US format)
+  match = text.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (match) {
+    let year = parseInt(match[3]);
+    if (year < 100) year += 2000;
+    return new Date(year, match[1] - 1, match[2]).getTime();
+  }
+  
+  // Pattern: YYYY-MM-DD (ISO format)
+  match = text.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    return new Date(match[1], match[2] - 1, match[3]).getTime();
+  }
+  
+  // Fallback to year if available (mid-year approximation)
+  if (photo.year) {
+    return new Date(photo.year, 6, 1).getTime();
+  }
+  
+  // Last resort: use upload date
+  return new Date(photo.createdAt || 0).getTime();
 }
 
 function applyFilters() {
   const sortValue = document.getElementById('sort-select').value;
   const orientationFilter = document.getElementById('filter-orientation').value;
   const yearFilter = document.getElementById('filter-year').value;
+  const cameraFilter = document.getElementById('filter-camera').value;
   
+  // Filter
   filteredPhotos = photos.filter(p => {
     if (orientationFilter && p.orientation !== orientationFilter) return false;
     if (yearFilter && p.year !== yearFilter) return false;
+    if (cameraFilter && (!p.medium || !p.medium.startsWith(cameraFilter))) return false;
     return true;
   });
   
+  // Sort
   const [sortField, sortDir] = sortValue.split('-');
   filteredPhotos.sort((a, b) => {
     let valA, valB;
@@ -582,6 +769,9 @@ function applyFilters() {
     } else if (sortField === 'createdAt') {
       valA = new Date(a.createdAt || 0).getTime();
       valB = new Date(b.createdAt || 0).getTime();
+    } else if (sortField === 'photoDate') {
+      valA = parsePhotoDate(a);
+      valB = parsePhotoDate(b);
     } else {
       valA = (a[sortField] || '').toString().toLowerCase();
       valB = (b[sortField] || '').toString().toLowerCase();
@@ -594,6 +784,7 @@ function applyFilters() {
     }
   });
   
+  // Update count
   const filterCount = document.getElementById('filter-count');
   if (filteredPhotos.length !== photos.length) {
     filterCount.textContent = `Showing ${filteredPhotos.length} of ${photos.length}`;
@@ -615,6 +806,7 @@ async function loadPlaylists() {
 async function loadFrames() {
   const data = await api('/devices');
   frames = data.data || [];
+  console.log('Frames data:', frames); // Debug: see what fields are available
   document.getElementById('frame-count').textContent = frames.length;
   renderFrames();
 }
@@ -671,6 +863,7 @@ function renderFrames() {
   }
   
   container.innerHTML = frames.map(frame => {
+    // Current gallery is in frameStatus.currentGallery
     const currentGalleryId = frame.frameStatus?.currentGallery || frame.frameStatus?.currentlyPlaying?.id || null;
     const currentPlaylist = currentGalleryId ? playlists.find(pl => pl.id === currentGalleryId) : null;
     
@@ -718,6 +911,7 @@ function updateSelection() {
   document.getElementById('selected-count').textContent = selectedPhotos.size;
   document.getElementById('delete-selected').disabled = selectedPhotos.size === 0;
   document.getElementById('add-to-playlist').disabled = selectedPhotos.size === 0;
+  document.getElementById('ai-describe').disabled = selectedPhotos.size === 0;
   
   document.querySelectorAll('.card').forEach(card => {
     const id = parseInt(card.dataset.id);
@@ -749,6 +943,7 @@ async function confirmDelete() {
   closeDeleteModal();
   const ids = Array.from(selectedPhotos);
   
+  // Show progress
   const btn = document.getElementById('delete-selected');
   btn.textContent = 'Deleting...';
   btn.disabled = true;
@@ -785,14 +980,119 @@ function closePlaylistModal() {
   document.getElementById('playlist-modal').classList.add('hidden');
 }
 
+// AI Describe
+let aiResults = [];
+
+document.getElementById('ai-describe').onclick = () => {
+  aiResults = [];
+  document.getElementById('ai-count').textContent = selectedPhotos.size;
+  document.getElementById('ai-results').innerHTML = '';
+  document.getElementById('ai-progress').classList.remove('hidden');
+  document.getElementById('ai-progress-bar').style.width = '0%';
+  document.getElementById('ai-apply').disabled = true;
+  document.getElementById('ai-modal').classList.remove('hidden');
+  
+  runAiAnalysis();
+};
+
+async function runAiAnalysis() {
+  const ids = Array.from(selectedPhotos);
+  const resultsDiv = document.getElementById('ai-results');
+  const progressBar = document.getElementById('ai-progress-bar');
+  const statusText = document.getElementById('ai-status');
+  
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    const photo = photos.find(p => p.id === id);
+    
+    statusText.textContent = `Analyzing ${i + 1} of ${ids.length}...`;
+    progressBar.style.width = `${((i + 1) / ids.length) * 100}%`;
+    
+    try {
+      const result = await api(`/items/${id}/analyze`, { method: 'POST' });
+      aiResults.push({ id, ...result });
+      
+      // Add result to UI
+      const div = document.createElement('div');
+      div.style.cssText = 'background: #2a2a2a; border-radius: 8px; padding: 1rem; margin-bottom: 0.5rem; display: flex; gap: 1rem; align-items: center;';
+      div.innerHTML = `
+        <img src="${photo?.image || photo?.thumbnail || ''}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px;">
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-size: 0.85rem; color: #888; margin-bottom: 0.25rem;">Current: ${result.current_description || result.current_name || 'None'}</div>
+          <div style="font-weight: 500; color: #22c55e;">${result.smart_description || 'No description generated'}</div>
+          <div style="font-size: 0.75rem; color: #666; margin-top: 0.25rem;">
+            ${result.location ? '📍 ' + result.location : ''} 
+            ${result.season ? '🗓 ' + result.season : ''}
+            ${result.vision_caption ? '🤖 ' + result.vision_caption : ''}
+          </div>
+        </div>
+      `;
+      resultsDiv.appendChild(div);
+      
+    } catch (err) {
+      console.error(`Failed to analyze ${id}:`, err);
+      aiResults.push({ id, error: err.message });
+    }
+  }
+  
+  statusText.textContent = `Done! ${aiResults.filter(r => r.smart_description).length} descriptions generated.`;
+  document.getElementById('ai-apply').disabled = aiResults.filter(r => r.smart_description).length === 0;
+}
+
+async function applyAiDescriptions() {
+  const applyBtn = document.getElementById('ai-apply');
+  applyBtn.disabled = true;
+  applyBtn.textContent = 'Applying...';
+  
+  const statusText = document.getElementById('ai-status');
+  let applied = 0;
+  
+  for (const result of aiResults) {
+    if (result.smart_description) {
+      try {
+        await api(`/items/${result.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ 
+            name: result.smart_description,
+            description: result.smart_description 
+          })
+        });
+        applied++;
+        statusText.textContent = `Applied ${applied} descriptions...`;
+      } catch (err) {
+        console.error(`Failed to apply to ${result.id}:`, err);
+      }
+    }
+  }
+  
+  statusText.textContent = `✓ Applied ${applied} descriptions!`;
+  applyBtn.textContent = 'Done!';
+  
+  // Refresh photos
+  await loadPhotos();
+  
+  setTimeout(() => {
+    closeAiModal();
+    selectedPhotos.clear();
+    updateSelection();
+  }, 1500);
+}
+
+function closeAiModal() {
+  document.getElementById('ai-modal').classList.add('hidden');
+  aiResults = [];
+}
+
 async function confirmAddToPlaylist() {
   const playlistId = document.getElementById('playlist-select').value;
   if (!playlistId) return;
   
+  const count = selectedPhotos.size;
   const playlistName = document.getElementById('playlist-select').selectedOptions[0]?.text || 'playlist';
   
   closePlaylistModal();
   
+  // Show progress on button
   const btn = document.getElementById('add-to-playlist');
   btn.textContent = 'Adding...';
   btn.disabled = true;
@@ -829,6 +1129,7 @@ async function selectPlaylist(id) {
   
   try {
     const data = await api(`/galleries/${id}/items?count=100`);
+    console.log('Playlist items response:', data);
     const items = data.data || [];
     
     if (items.length === 0) {
@@ -1010,8 +1311,22 @@ async function submitUpload() {
     const failed = data.results.filter(r => !r.success).length;
     
     progressBar.style.width = '100%';
-    statusText.textContent = `Done! ${successful} uploaded${failed > 0 ? `, ${failed} failed` : ''}`;
     
+    // Show detailed results with EXIF and AI description
+    let statusHtml = `<strong>Done!</strong> ${successful} uploaded${failed > 0 ? `, ${failed} failed` : ''}<br><br>`;
+    data.results.filter(r => r.success).forEach(r => {
+      statusHtml += `<div style="font-size: 0.8rem; margin-bottom: 0.5rem; padding: 0.5rem; background: #1a1a1a; border-radius: 4px;">
+        <div><strong>${r.filename}</strong></div>
+        ${r.resized ? `<div style="color: #f59e0b;">📐 Resized: ${r.resized.from} → ${r.resized.to}</div>` : ''}
+        ${r.exif?.location ? `<div style="color: #888;">📍 ${r.exif.location}</div>` : ''}
+        ${r.exif?.season ? `<div style="color: #888;">🗓 ${r.exif.season}</div>` : ''}
+        ${r.vision_caption ? `<div style="color: #888;">🤖 ${r.vision_caption}</div>` : ''}
+        ${r.smart_description ? `<div style="color: #22c55e; font-weight: 500;">✓ ${r.smart_description}</div>` : ''}
+      </div>`;
+    });
+    statusText.innerHTML = statusHtml;
+    
+    // Refresh photos and storage after upload
     setTimeout(async () => {
       closeUploadModal();
       await loadPhotos();
@@ -1024,17 +1339,170 @@ async function submitUpload() {
   }
 }
 
-// Initialize
-async function init() {
-  await Promise.all([
-    loadUserInfo(),
-    loadPhotos(),
-    loadPlaylists(),
-    loadFrames()
-  ]);
+// EXIF Library functions
+let allExifPhotos = [];
+
+async function loadExifStats() {
+  try {
+    const data = await api('/exif/stats');
+    
+    document.getElementById('stat-total').textContent = data.total || 0;
+    document.getElementById('stat-gps').textContent = data.with_gps || 0;
+    document.getElementById('stat-cameras').textContent = data.cameras?.length || 0;
+    document.getElementById('stat-lenses').textContent = data.lenses?.length || 0;
+    
+    // Camera list
+    const cameraList = document.getElementById('camera-list');
+    if (data.cameras?.length > 0) {
+      cameraList.innerHTML = data.cameras.map(c => `
+        <div class="playlist-item" style="cursor: default;">
+          <div class="playlist-name">${c.camera_model}</div>
+          <div class="playlist-count">${c.count} photos</div>
+        </div>
+      `).join('');
+    } else {
+      cameraList.innerHTML = '<div class="empty">No camera data yet</div>';
+    }
+    
+    // Lens list
+    const lensList = document.getElementById('lens-list');
+    if (data.lenses?.length > 0) {
+      lensList.innerHTML = data.lenses.slice(0, 10).map(l => `
+        <div class="playlist-item" style="cursor: default;">
+          <div class="playlist-name" style="font-size: 0.85rem;">${l.lens_model}</div>
+          <div class="playlist-count">${l.count}</div>
+        </div>
+      `).join('');
+    } else {
+      lensList.innerHTML = '<div class="empty">No lens data yet</div>';
+    }
+  } catch (err) {
+    console.error('Failed to load EXIF stats:', err);
+  }
 }
 
-init();
+async function loadExifPhotos() {
+  try {
+    const data = await api('/exif');
+    allExifPhotos = data.data || [];
+    
+    document.getElementById('exif-count').textContent = `${data.count || 0} photos tracked`;
+    
+    // Populate filter dropdowns
+    populateExifFilters();
+    
+    // Apply filters (will render the photos)
+    applyExifFilters();
+  } catch (err) {
+    console.error('Failed to load EXIF photos:', err);
+  }
+}
+
+function populateExifFilters() {
+  // Cameras
+  const cameras = [...new Set(allExifPhotos.map(p => p.camera_model).filter(Boolean))].sort();
+  document.getElementById('exif-filter-camera').innerHTML = '<option value="">All Cameras</option>' +
+    cameras.map(c => `<option value="${c}">${c}</option>`).join('');
+  
+  // Lenses
+  const lenses = [...new Set(allExifPhotos.map(p => p.lens_model).filter(Boolean))].sort();
+  document.getElementById('exif-filter-lens').innerHTML = '<option value="">All Lenses</option>' +
+    lenses.map(l => `<option value="${l}">${l.substring(0, 40)}${l.length > 40 ? '...' : ''}</option>`).join('');
+  
+  // Years
+  const years = [...new Set(allExifPhotos.map(p => p.date_taken?.substring(0, 4)).filter(Boolean))].sort().reverse();
+  document.getElementById('exif-filter-year').innerHTML = '<option value="">All Years</option>' +
+    years.map(y => `<option value="${y}">${y}</option>`).join('');
+}
+
+function applyExifFilters() {
+  const cameraFilter = document.getElementById('exif-filter-camera').value;
+  const lensFilter = document.getElementById('exif-filter-lens').value;
+  const yearFilter = document.getElementById('exif-filter-year').value;
+  const gpsFilter = document.getElementById('exif-filter-gps').value;
+  const apertureFilter = document.getElementById('exif-filter-aperture').value;
+  const sortValue = document.getElementById('exif-sort').value;
+  
+  // Filter
+  let filtered = allExifPhotos.filter(p => {
+    if (cameraFilter && p.camera_model !== cameraFilter) return false;
+    if (lensFilter && p.lens_model !== lensFilter) return false;
+    if (yearFilter && !p.date_taken?.startsWith(yearFilter)) return false;
+    if (gpsFilter === 'yes' && !p.gps_latitude) return false;
+    if (gpsFilter === 'no' && p.gps_latitude) return false;
+    if (apertureFilter === 'wide' && (p.aperture < 1 || p.aperture > 2.8)) return false;
+    if (apertureFilter === 'mid' && (p.aperture < 2.8 || p.aperture > 5.6)) return false;
+    if (apertureFilter === 'narrow' && p.aperture < 5.6) return false;
+    return true;
+  });
+  
+  // Sort
+  filtered.sort((a, b) => {
+    switch (sortValue) {
+      case 'date-desc':
+        return (b.date_taken || '').localeCompare(a.date_taken || '');
+      case 'date-asc':
+        return (a.date_taken || '').localeCompare(b.date_taken || '');
+      case 'camera':
+        return (a.camera_model || '').localeCompare(b.camera_model || '');
+      case 'iso-desc':
+        return (b.iso || 0) - (a.iso || 0);
+      case 'iso-asc':
+        return (a.iso || 0) - (b.iso || 0);
+      default:
+        return 0;
+    }
+  });
+  
+  // Update count
+  const filterCount = document.getElementById('exif-filter-count');
+  if (filtered.length !== allExifPhotos.length) {
+    filterCount.textContent = `Showing ${filtered.length} of ${allExifPhotos.length}`;
+  } else {
+    filterCount.textContent = '';
+  }
+  
+  // Render
+  renderExifPhotos(filtered);
+}
+
+function renderExifPhotos(photos) {
+  const container = document.getElementById('exif-photos');
+  
+  if (!photos.length) {
+    container.innerHTML = '<div class="empty">No photos match the filters</div>';
+    return;
+  }
+  
+  container.innerHTML = photos.slice(0, 100).map(p => `
+    <div style="background: #2a2a2a; border-radius: 8px; padding: 1rem; display: flex; gap: 1rem; align-items: center;">
+      <div style="flex: 1; min-width: 0;">
+        <div style="font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${p.original_filename}</div>
+        <div style="font-size: 0.85rem; color: #888; margin-top: 0.25rem;">
+          ${p.date_taken ? new Date(p.date_taken).toLocaleString() : 'No date'} 
+          ${p.location_name ? '• 📍 ' + p.location_name : ''}
+        </div>
+      </div>
+      <div style="text-align: right; font-size: 0.85rem; color: #888; white-space: nowrap;">
+        <div>${p.camera_model || ''}</div>
+        <div style="font-size: 0.75rem;">${p.lens_model ? p.lens_model.substring(0, 30) : ''}</div>
+      </div>
+      <div style="text-align: right; font-size: 0.85rem; font-family: monospace; color: #666; white-space: nowrap;">
+        <div>${p.aperture ? 'f/' + p.aperture : ''} ${p.shutter_speed || ''}</div>
+        <div>${p.iso ? 'ISO ' + p.iso : ''}</div>
+      </div>
+      ${p.gps_latitude ? '<div style="color: #22c55e;">📍</div>' : ''}
+    </div>
+  `).join('');
+}
+
+// Init
+loadUserInfo();
+loadPhotos();
+loadPlaylists();
+loadFrames();
+loadExifStats();
+loadExifPhotos();
 </script>
 </body>
 </html>
