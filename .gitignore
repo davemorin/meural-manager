@@ -1,0 +1,6 @@
+node_modules/
+.env
+.meural-password
+*.sqlite
+/tmp/
+.DS_Store

@@ -1,0 +1,26 @@
+{
+  "name": "meural-manager",
+  "version": "1.0.0",
+  "description": "Self-hosted web interface to manage Meural digital art frames",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "meural",
+    "netgear",
+    "digital-frame",
+    "photo-management"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.967.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "multer": "^2.0.2",
+    "sharp": "^0.34.5"
+  }
+}

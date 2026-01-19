@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meural Manager</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+      background: #1a1a1a; 
+      color: #fff;
+      min-height: 100vh;
+    }
+    
+    header {
+      background: #2a2a2a;
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #3a3a3a;
+    }
+    
+    h1 { font-size: 1.5rem; font-weight: 500; }
+    
+    .stats {
+      display: flex;
+      gap: 2rem;
+      font-size: 0.9rem;
+      color: #888;
+    }
+    
+    .stats span { color: #fff; font-weight: 600; }
+    .stats .warning { color: #f59e0b; }
+    .stats .danger { color: #ef4444; }
+    
+    nav {
+      display: flex;
+      gap: 0;
+      background: #2a2a2a;
+      border-bottom: 1px solid #3a3a3a;
+    }
+    
+    nav button {
+      background: none;
+      border: none;
+      color: #888;
+      padding: 1rem 2rem;
+      cursor: pointer;
+      font-size: 0.95rem;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    
+    nav button:hover { color: #fff; }
+    nav button.active { 
+      color: #fff; 
+      border-bottom-color: #3b82f6;
+    }
+    
+    @keyframes slideUp {
+      from { transform: translateX(-50%) translateY(20px); opacity: 0; }
+      to { transform: translateX(-50%) translateY(0); opacity: 1; }
+    }
+    
+    main { padding: 2rem; }
+    
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      gap: 1rem;
+    }
+    
+    .toolbar-left {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+    
+    .selection-info {
+      color: #888;
+      font-size: 0.9rem;
+    }
+    
+    .selection-info span { color: #3b82f6; font-weight: 600; }
+    
+    button {
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background 0.2s;
+    }
+    
+    button:hover { background: #2563eb; }
+    button:disabled { background: #4a4a4a; cursor: not-allowed; }
+    button.danger { background: #ef4444; }
+    button.danger:hover { background: #dc2626; }
+    button.secondary { background: #4a4a4a; }
+    button.secondary:hover { background: #5a5a5a; }
+    
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 1rem;
+    }
+    
+    .card {
+      background: #2a2a2a;
+      border-radius: 8px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+    
+    .card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+    .card.selected { outline: 3px solid #3b82f6; }
+    
+    .card img {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+    }
+    
+    .card-info {
+      padding: 0.75rem;
+    }
+    
+    .card-title {
+      font-size: 0.85rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .card-subtitle {
+      font-size: 0.75rem;
+      color: #888;
+      margin-top: 0.25rem;
+    }
+    
+    .checkbox {
+      position: absolute;
+      top: 0.5rem;
+      left: 0.5rem;
+      width: 24px;
+      height: 24px;
+      background: rgba(0,0,0,0.6);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    
+    .card:hover .checkbox, .card.selected .checkbox { opacity: 1; }
+    .card.selected .checkbox { background: #3b82f6; }
+    .card.selected .checkbox::after {
+      content: '✓';
+      color: #fff;
+      font-weight: bold;
+    }
+    
+    .playlist-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      max-width: 400px;
+    }
+    
+    .playlist-item {
+      background: #2a2a2a;
+      padding: 1rem;
+      border-radius: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    .playlist-item:hover { background: #3a3a3a; }
+    .playlist-item.active { outline: 2px solid #3b82f6; }
+    
+    .playlist-name { font-weight: 500; }
+    .playlist-count { color: #888; font-size: 0.85rem; }
+    
+    .frames-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1.5rem;
+    }
+    
+    .frame-card {
+      background: #2a2a2a;
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+    
+    .frame-name {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    
+    .frame-status {
+      font-size: 0.85rem;
+      color: #888;
+      margin-bottom: 1rem;
+    }
+    
+    .frame-status.online { color: #22c55e; }
+    
+    .frame-playlist {
+      margin-top: 1rem;
+    }
+    
+    .frame-playlist label {
+      display: block;
+      font-size: 0.85rem;
+      color: #888;
+      margin-bottom: 0.5rem;
+    }
+    
+    .frame-playlist select {
+      width: 100%;
+      padding: 0.5rem;
+      border-radius: 6px;
+      border: 1px solid #4a4a4a;
+      background: #1a1a1a;
+      color: #fff;
+      font-size: 0.9rem;
+    }
+    
+    .loading, .empty {
+      text-align: center;
+      padding: 4rem;
+      color: #888;
+    }
+    
+    .loading::after {
+      content: '';
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2px solid #4a4a4a;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-left: 0.5rem;
+      vertical-align: middle;
+    }
+    
+    @keyframes spin { to { transform: rotate(360deg); } }
+    
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    
+    .modal {
+      background: #2a2a2a;
+      border-radius: 12px;
+      padding: 2rem;
+      max-width: 500px;
+      width: 90%;
+    }
+    
+    .modal h2 {
+      margin-bottom: 1rem;
+    }
+    
+    .modal-actions {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1.5rem;
+      justify-content: flex-end;
+    }
+    
+    input[type="text"] {
+      width: 100%;
+      padding: 0.75rem;
+      border-radius: 6px;
+      border: 1px solid #4a4a4a;
+      background: #1a1a1a;
+      color: #fff;
+      font-size: 1rem;
+    }
+    
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Meural Manager</h1>
+    <div class="stats">
+      <div>Storage: <span id="storage-used">-</span> / <span id="storage-total">-</span> GB</div>
+      <div>Photos: <span id="photo-count">-</span></div>
+      <div>Playlists: <span id="playlist-count">-</span></div>
+      <div>Frames: <span id="frame-count">-</span></div>
+    </div>
+  </header>
+  
+  <nav>
+    <button class="active" data-tab="photos">Photos</button>
+    <button data-tab="playlists">Playlists</button>
+    <button data-tab="frames">Frames</button>
+  </nav>
+  
+  <main>
+    <!-- Photos Tab -->
+    <section id="photos-tab">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <button id="select-all" class="secondary">Select All</button>
+          <button id="select-none" class="secondary">Select None</button>
+          <div class="selection-info"><span id="selected-count">0</span> selected</div>
+        </div>
+        <div>
+          <button id="upload-photos">+ Upload Photos</button>
+          <button id="add-to-playlist" disabled>Add to Playlist</button>
+          <button id="delete-selected" class="danger" disabled>Delete Selected</button>
+        </div>
+      </div>
+      <div class="toolbar" style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid #3a3a3a;">
+        <div class="toolbar-left" style="gap: 0.75rem;">
+          <div>
+            <label style="font-size: 0.75rem; color: #888; display: block; margin-bottom: 0.25rem;">Sort by</label>
+            <select id="sort-select" onchange="applyFilters()" style="padding: 0.4rem 0.6rem; border-radius: 4px; border: 1px solid #4a4a4a; background: #2a2a2a; color: #fff; font-size: 0.85rem;">
+              <option value="createdAt-desc">Uploaded (newest)</option>
+              <option value="createdAt-asc">Uploaded (oldest)</option>
+              <option value="name-asc">Name A-Z</option>
+              <option value="name-desc">Name Z-A</option>
+              <option value="size-desc">Size (largest)</option>
+              <option value="size-asc">Size (smallest)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 0.75rem; color: #888; display: block; margin-bottom: 0.25rem;">Orientation</label>
+            <select id="filter-orientation" onchange="applyFilters()" style="padding: 0.4rem 0.6rem; border-radius: 4px; border: 1px solid #4a4a4a; background: #2a2a2a; color: #fff; font-size: 0.85rem;">
+              <option value="">All</option>
+              <option value="portrait">Portrait</option>
+              <option value="landscape">Landscape</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 0.75rem; color: #888; display: block; margin-bottom: 0.25rem;">Year</label>
+            <select id="filter-year" onchange="applyFilters()" style="padding: 0.4rem 0.6rem; border-radius: 4px; border: 1px solid #4a4a4a; background: #2a2a2a; color: #fff; font-size: 0.85rem;">
+              <option value="">All</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <span id="filter-count" style="font-size: 0.85rem; color: #888;"></span>
+        </div>
+      </div>
+      <div id="photos-grid" class="grid">
+        <div class="loading">Loading photos</div>
+      </div>
+    </section>
+    
+    <!-- Playlists Tab -->
+    <section id="playlists-tab" class="hidden">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <button id="new-playlist">+ New Playlist</button>
+        </div>
+      </div>
+      <div style="display: flex; gap: 2rem;">
+        <div class="playlist-list" id="playlist-list">
+          <div class="loading">Loading playlists</div>
+        </div>
+        <div style="flex: 1;">
+          <div id="playlist-items" class="grid"></div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- Frames Tab -->
+    <section id="frames-tab" class="hidden">
+      <div id="frames-grid" class="frames-grid">
+        <div class="loading">Loading frames</div>
+      </div>
+    </section>
+  </main>
+  
+  <!-- Confirm Delete Modal -->
+  <div id="delete-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2>Delete Photos</h2>
+      <p>Are you sure you want to delete <span id="delete-count">0</span> photos? This cannot be undone.</p>
+      <div class="modal-actions">
+        <button class="secondary" onclick="closeDeleteModal()">Cancel</button>
+        <button class="danger" onclick="confirmDelete()">Delete</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Add to Playlist Modal -->
+  <div id="playlist-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2>Add to Playlist</h2>
+      <select id="playlist-select" style="width: 100%; padding: 0.75rem; border-radius: 6px; border: 1px solid #4a4a4a; background: #1a1a1a; color: #fff; font-size: 1rem;">
+        <option value="">Select a playlist...</option>
+      </select>
+      <div class="modal-actions">
+        <button class="secondary" onclick="closePlaylistModal()">Cancel</button>
+        <button onclick="confirmAddToPlaylist()">Add</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- New Playlist Modal -->
+  <div id="new-playlist-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2>New Playlist</h2>
+      <input type="text" id="new-playlist-name" placeholder="Playlist name...">
+      <div class="modal-actions">
+        <button class="secondary" onclick="closeNewPlaylistModal()">Cancel</button>
+        <button onclick="createPlaylist()">Create</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Upload Modal -->
+  <div id="upload-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2>Upload Photos</h2>
+      <div id="upload-dropzone" style="border: 2px dashed #4a4a4a; border-radius: 8px; padding: 2rem; text-align: center; margin-bottom: 1rem; cursor: pointer;">
+        <p style="margin-bottom: 0.5rem;">Drag & drop photos here</p>
+        <p style="color: #888; font-size: 0.85rem;">or click to select files</p>
+        <p style="color: #888; font-size: 0.75rem; margin-top: 0.5rem;">Max 20MB per photo • JPG, PNG, GIF</p>
+        <input type="file" id="upload-input" multiple accept="image/*" style="display: none;">
+      </div>
+      <div id="upload-preview" style="max-height: 200px; overflow-y: auto; margin-bottom: 1rem;"></div>
+      <div id="upload-progress" class="hidden" style="margin-bottom: 1rem;">
+        <div style="background: #3a3a3a; border-radius: 4px; overflow: hidden;">
+          <div id="upload-progress-bar" style="height: 4px; background: #3b82f6; width: 0%; transition: width 0.3s;"></div>
+        </div>
+        <p id="upload-status" style="font-size: 0.85rem; color: #888; margin-top: 0.5rem;">Uploading...</p>
+      </div>
+      <div class="modal-actions">
+        <button class="secondary" onclick="closeUploadModal()">Cancel</button>
+        <button id="upload-submit" onclick="submitUpload()" disabled>Upload</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+// Toast notification
+function showToast(message, type = 'success') {
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+  
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.style.cssText = `
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 1rem 2rem;
+    border-radius: 8px;
+    background: ${type === 'error' ? '#ef4444' : '#22c55e'};
+    color: white;
+    font-weight: 500;
+    z-index: 10000;
+    animation: slideUp 0.3s ease;
+  `;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transition = 'opacity 0.3s';
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+// State
+let photos = [];
+let filteredPhotos = [];
+let playlists = [];
+let frames = [];
+let userInfo = null;
+let selectedPhotos = new Set();
+let activePlaylist = null;
+
+// API helpers
+async function api(path, opts = {}) {
+  const res = await fetch('/api' + path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', ...opts.headers }
+  });
+  return res.json();
+}
+
+// Load user info (storage)
+async function loadUserInfo() {
+  try {
+    const data = await api('/user');
+    userInfo = data.data;
+    const usedGB = (userInfo.usedStorage / 1024).toFixed(2);
+    const totalGB = (userInfo.totalStorage / 1024).toFixed(2);
+    const usedEl = document.getElementById('storage-used');
+    usedEl.textContent = usedGB;
+    document.getElementById('storage-total').textContent = totalGB;
+    
+    const pct = userInfo.usedStorage / userInfo.totalStorage;
+    usedEl.classList.remove('warning', 'danger');
+    if (pct > 0.9) usedEl.classList.add('danger');
+    else if (pct > 0.8) usedEl.classList.add('warning');
+  } catch (err) {
+    console.error('Failed to load user info:', err);
+  }
+}
+
+// Load all data
+async function loadPhotos() {
+  const container = document.getElementById('photos-grid');
+  container.innerHTML = '<div class="loading">Loading photos</div>';
+  
+  let allPhotos = [];
+  let page = 1;
+  let hasMore = true;
+  
+  while (hasMore) {
+    const data = await api(`/items?page=${page}&count=100`);
+    if (data.data && data.data.length > 0) {
+      allPhotos = allPhotos.concat(data.data);
+      page++;
+      hasMore = !data.isLast;
+    } else {
+      hasMore = false;
+    }
+  }
+  
+  photos = allPhotos;
+  updatePhotoCount();
+  populateFilterOptions();
+  applyFilters();
+}
+
+function populateFilterOptions() {
+  const years = [...new Set(photos.map(p => p.year).filter(Boolean))].sort().reverse();
+  const yearSelect = document.getElementById('filter-year');
+  yearSelect.innerHTML = '<option value="">All</option>' + 
+    years.map(y => `<option value="${y}">${y}</option>`).join('');
+}
+
+function applyFilters() {
+  const sortValue = document.getElementById('sort-select').value;
+  const orientationFilter = document.getElementById('filter-orientation').value;
+  const yearFilter = document.getElementById('filter-year').value;
+  
+  filteredPhotos = photos.filter(p => {
+    if (orientationFilter && p.orientation !== orientationFilter) return false;
+    if (yearFilter && p.year !== yearFilter) return false;
+    return true;
+  });
+  
+  const [sortField, sortDir] = sortValue.split('-');
+  filteredPhotos.sort((a, b) => {
+    let valA, valB;
+    
+    if (sortField === 'size') {
+      valA = (a.originalWidth || 0) * (a.originalHeight || 0);
+      valB = (b.originalWidth || 0) * (b.originalHeight || 0);
+    } else if (sortField === 'createdAt') {
+      valA = new Date(a.createdAt || 0).getTime();
+      valB = new Date(b.createdAt || 0).getTime();
+    } else {
+      valA = (a[sortField] || '').toString().toLowerCase();
+      valB = (b[sortField] || '').toString().toLowerCase();
+    }
+    
+    if (sortDir === 'asc') {
+      return valA > valB ? 1 : valA < valB ? -1 : 0;
+    } else {
+      return valA < valB ? 1 : valA > valB ? -1 : 0;
+    }
+  });
+  
+  const filterCount = document.getElementById('filter-count');
+  if (filteredPhotos.length !== photos.length) {
+    filterCount.textContent = `Showing ${filteredPhotos.length} of ${photos.length}`;
+  } else {
+    filterCount.textContent = '';
+  }
+  
+  renderPhotos();
+}
+
+async function loadPlaylists() {
+  const data = await api('/galleries');
+  playlists = data.data || [];
+  document.getElementById('playlist-count').textContent = playlists.length;
+  renderPlaylists();
+  updatePlaylistSelect();
+}
+
+async function loadFrames() {
+  const data = await api('/devices');
+  frames = data.data || [];
+  document.getElementById('frame-count').textContent = frames.length;
+  renderFrames();
+}
+
+// Render functions
+function renderPhotos() {
+  const container = document.getElementById('photos-grid');
+  if (filteredPhotos.length === 0) {
+    container.innerHTML = '<div class="empty">No photos found</div>';
+    return;
+  }
+  
+  container.innerHTML = filteredPhotos.map(photo => {
+    const w = photo.originalWidth || 0;
+    const h = photo.originalHeight || 0;
+    const sizeStr = w && h ? `${w}×${h}` : '';
+    return `
+    <div class="card ${selectedPhotos.has(photo.id) ? 'selected' : ''}" data-id="${photo.id}" onclick="togglePhoto(${photo.id})">
+      <div class="checkbox"></div>
+      <img src="${photo.image || photo.thumbnail || ''}" alt="${photo.name || ''}" loading="lazy">
+      <div class="card-info">
+        <div class="card-title">${photo.name || 'Untitled'}</div>
+        ${photo.description ? `<div class="card-subtitle" style="color: #22c55e;">${photo.description}</div>` : ''}
+        ${!photo.description && photo.author ? `<div class="card-subtitle">${photo.author}</div>` : ''}
+        ${sizeStr ? `<div class="card-subtitle">${sizeStr}</div>` : ''}
+      </div>
+    </div>
+  `}).join('');
+}
+
+function renderPlaylists() {
+  const container = document.getElementById('playlist-list');
+  if (playlists.length === 0) {
+    container.innerHTML = '<div class="empty">No playlists</div>';
+    return;
+  }
+  
+  container.innerHTML = playlists.map(pl => `
+    <div class="playlist-item ${activePlaylist === pl.id ? 'active' : ''}" data-id="${pl.id}" onclick="selectPlaylist(${pl.id})">
+      <div>
+        <div class="playlist-name">${pl.name}</div>
+        <div class="playlist-count">${pl.itemCount || 0} items</div>
+      </div>
+      <button class="danger" onclick="event.stopPropagation(); deletePlaylist(${pl.id})" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">×</button>
+    </div>
+  `).join('');
+}
+
+function renderFrames() {
+  const container = document.getElementById('frames-grid');
+  if (frames.length === 0) {
+    container.innerHTML = '<div class="empty">No frames found</div>';
+    return;
+  }
+  
+  container.innerHTML = frames.map(frame => {
+    const currentGalleryId = frame.frameStatus?.currentGallery || frame.frameStatus?.currentlyPlaying?.id || null;
+    const currentPlaylist = currentGalleryId ? playlists.find(pl => pl.id === currentGalleryId) : null;
+    
+    return `
+    <div class="frame-card">
+      <div class="frame-name">${frame.alias || frame.name || 'Frame'}</div>
+      <div class="frame-status ${frame.status === 'online' ? 'online' : ''}">
+        ${frame.status || 'unknown'}
+      </div>
+      ${currentPlaylist ? `<div style="color: #22c55e; font-size: 0.9rem; margin-bottom: 0.5rem;">▶ ${currentPlaylist.name}</div>` : ''}
+      <div class="frame-playlist">
+        <label>Playlist</label>
+        <select onchange="assignPlaylist(${frame.id}, this.value)">
+          <option value="">None</option>
+          ${playlists.map(pl => `
+            <option value="${pl.id}" ${currentGalleryId === pl.id ? 'selected' : ''}>${pl.name}</option>
+          `).join('')}
+        </select>
+      </div>
+    </div>
+  `}).join('');
+}
+
+function updatePhotoCount() {
+  document.getElementById('photo-count').textContent = photos.length;
+}
+
+function updatePlaylistSelect() {
+  const select = document.getElementById('playlist-select');
+  select.innerHTML = '<option value="">Select a playlist...</option>' +
+    playlists.map(pl => `<option value="${pl.id}">${pl.name}</option>`).join('');
+}
+
+// Selection
+function togglePhoto(id) {
+  if (selectedPhotos.has(id)) {
+    selectedPhotos.delete(id);
+  } else {
+    selectedPhotos.add(id);
+  }
+  updateSelection();
+}
+
+function updateSelection() {
+  document.getElementById('selected-count').textContent = selectedPhotos.size;
+  document.getElementById('delete-selected').disabled = selectedPhotos.size === 0;
+  document.getElementById('add-to-playlist').disabled = selectedPhotos.size === 0;
+  
+  document.querySelectorAll('.card').forEach(card => {
+    const id = parseInt(card.dataset.id);
+    card.classList.toggle('selected', selectedPhotos.has(id));
+  });
+}
+
+document.getElementById('select-all').onclick = () => {
+  filteredPhotos.forEach(p => selectedPhotos.add(p.id));
+  updateSelection();
+};
+
+document.getElementById('select-none').onclick = () => {
+  selectedPhotos.clear();
+  updateSelection();
+};
+
+// Delete
+document.getElementById('delete-selected').onclick = () => {
+  document.getElementById('delete-count').textContent = selectedPhotos.size;
+  document.getElementById('delete-modal').classList.remove('hidden');
+};
+
+function closeDeleteModal() {
+  document.getElementById('delete-modal').classList.add('hidden');
+}
+
+async function confirmDelete() {
+  closeDeleteModal();
+  const ids = Array.from(selectedPhotos);
+  
+  const btn = document.getElementById('delete-selected');
+  btn.textContent = 'Deleting...';
+  btn.disabled = true;
+  
+  try {
+    const result = await api('/items/bulk-delete', {
+      method: 'POST',
+      body: JSON.stringify({ ids })
+    });
+    
+    const successful = result.results?.filter(r => r.success).length || 0;
+    const failed = result.results?.filter(r => !r.success).length || 0;
+    
+    showToast(`Deleted ${successful} photo${successful !== 1 ? 's' : ''}${failed > 0 ? ` (${failed} failed)` : ''}`);
+    
+    selectedPhotos.clear();
+    await loadPhotos();
+    await loadUserInfo();
+    updateSelection();
+  } catch (err) {
+    showToast(`Delete failed: ${err.message}`, 'error');
+  }
+  
+  btn.textContent = 'Delete Selected';
+  btn.disabled = false;
+}
+
+// Add to playlist
+document.getElementById('add-to-playlist').onclick = () => {
+  document.getElementById('playlist-modal').classList.remove('hidden');
+};
+
+function closePlaylistModal() {
+  document.getElementById('playlist-modal').classList.add('hidden');
+}
+
+async function confirmAddToPlaylist() {
+  const playlistId = document.getElementById('playlist-select').value;
+  if (!playlistId) return;
+  
+  const playlistName = document.getElementById('playlist-select').selectedOptions[0]?.text || 'playlist';
+  
+  closePlaylistModal();
+  
+  const btn = document.getElementById('add-to-playlist');
+  btn.textContent = 'Adding...';
+  btn.disabled = true;
+  
+  let added = 0;
+  let failed = 0;
+  
+  for (const itemId of selectedPhotos) {
+    try {
+      await api(`/galleries/${playlistId}/items/${itemId}`, { method: 'POST' });
+      added++;
+    } catch (err) {
+      failed++;
+    }
+  }
+  
+  showToast(`Added ${added} photo${added !== 1 ? 's' : ''} to "${playlistName}"${failed > 0 ? ` (${failed} failed)` : ''}`);
+  
+  selectedPhotos.clear();
+  updateSelection();
+  await loadPlaylists();
+  
+  btn.textContent = 'Add to Playlist';
+  btn.disabled = false;
+}
+
+// Playlist management
+async function selectPlaylist(id) {
+  activePlaylist = id;
+  renderPlaylists();
+  
+  const container = document.getElementById('playlist-items');
+  container.innerHTML = '<div class="loading">Loading</div>';
+  
+  try {
+    const data = await api(`/galleries/${id}/items?count=100`);
+    const items = data.data || [];
+    
+    if (items.length === 0) {
+      container.innerHTML = '<div class="empty">No items in this playlist</div>';
+      return;
+    }
+    
+    container.innerHTML = items.map(item => `
+      <div class="card" data-id="${item.id}">
+        <img src="${item.image || item.hero || item.thumbnail || ''}" alt="${item.name || ''}" loading="lazy">
+        <div class="card-info">
+          <div class="card-title">${item.name || 'Untitled'}</div>
+          <button class="danger" onclick="removeFromPlaylist(${activePlaylist}, ${item.id})" style="margin-top: 0.5rem; width: 100%; padding: 0.25rem;">Remove</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {
+    console.error('Error loading playlist items:', err);
+    container.innerHTML = '<div class="empty">Error loading playlist</div>';
+  }
+}
+
+async function removeFromPlaylist(galleryId, itemId) {
+  await api(`/galleries/${galleryId}/items/${itemId}`, { method: 'DELETE' });
+  await selectPlaylist(galleryId);
+  await loadPlaylists();
+}
+
+document.getElementById('new-playlist').onclick = () => {
+  document.getElementById('new-playlist-modal').classList.remove('hidden');
+  document.getElementById('new-playlist-name').focus();
+};
+
+function closeNewPlaylistModal() {
+  document.getElementById('new-playlist-modal').classList.add('hidden');
+}
+
+async function createPlaylist() {
+  const name = document.getElementById('new-playlist-name').value.trim();
+  if (!name) return;
+  
+  closeNewPlaylistModal();
+  await api('/galleries', {
+    method: 'POST',
+    body: JSON.stringify({ name })
+  });
+  
+  document.getElementById('new-playlist-name').value = '';
+  await loadPlaylists();
+}
+
+async function deletePlaylist(id) {
+  if (!confirm('Delete this playlist?')) return;
+  await api(`/galleries/${id}`, { method: 'DELETE' });
+  if (activePlaylist === id) {
+    activePlaylist = null;
+    document.getElementById('playlist-items').innerHTML = '';
+  }
+  await loadPlaylists();
+}
+
+// Frame assignment
+async function assignPlaylist(deviceId, galleryId) {
+  if (!galleryId) return;
+  await api(`/devices/${deviceId}/galleries/${galleryId}`, { method: 'POST' });
+}
+
+// Tab navigation
+document.querySelectorAll('nav button').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('main > section').forEach(s => s.classList.add('hidden'));
+    document.getElementById(`${tab}-tab`).classList.remove('hidden');
+  };
+});
+
+// Upload functionality
+let filesToUpload = [];
+
+document.getElementById('upload-photos').onclick = () => {
+  document.getElementById('upload-modal').classList.remove('hidden');
+  filesToUpload = [];
+  document.getElementById('upload-preview').innerHTML = '';
+  document.getElementById('upload-progress').classList.add('hidden');
+  document.getElementById('upload-submit').disabled = true;
+};
+
+function closeUploadModal() {
+  document.getElementById('upload-modal').classList.add('hidden');
+  filesToUpload = [];
+}
+
+const dropzone = document.getElementById('upload-dropzone');
+const uploadInput = document.getElementById('upload-input');
+
+dropzone.onclick = () => uploadInput.click();
+
+dropzone.ondragover = (e) => {
+  e.preventDefault();
+  dropzone.style.borderColor = '#3b82f6';
+  dropzone.style.background = 'rgba(59, 130, 246, 0.1)';
+};
+
+dropzone.ondragleave = () => {
+  dropzone.style.borderColor = '#4a4a4a';
+  dropzone.style.background = 'transparent';
+};
+
+dropzone.ondrop = (e) => {
+  e.preventDefault();
+  dropzone.style.borderColor = '#4a4a4a';
+  dropzone.style.background = 'transparent';
+  handleFiles(e.dataTransfer.files);
+};
+
+uploadInput.onchange = () => {
+  handleFiles(uploadInput.files);
+};
+
+function handleFiles(files) {
+  const preview = document.getElementById('upload-preview');
+  
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) continue;
+    if (file.size > 100 * 1024 * 1024) {
+      alert(`${file.name} is larger than 100MB and will be skipped`);
+      continue;
+    }
+    
+    filesToUpload.push(file);
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const div = document.createElement('div');
+      div.style.cssText = 'display: inline-block; margin: 0.25rem; position: relative;';
+      div.innerHTML = `
+        <img src="${e.target.result}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px;">
+        <span style="position: absolute; bottom: 2px; right: 2px; background: rgba(0,0,0,0.7); color: #fff; font-size: 0.6rem; padding: 1px 3px; border-radius: 2px;">${(file.size / 1024 / 1024).toFixed(1)}MB</span>
+      `;
+      preview.appendChild(div);
+    };
+    reader.readAsDataURL(file);
+  }
+  
+  document.getElementById('upload-submit').disabled = filesToUpload.length === 0;
+  uploadInput.value = '';
+}
+
+async function submitUpload() {
+  if (filesToUpload.length === 0) return;
+  
+  const progressDiv = document.getElementById('upload-progress');
+  const progressBar = document.getElementById('upload-progress-bar');
+  const statusText = document.getElementById('upload-status');
+  const submitBtn = document.getElementById('upload-submit');
+  
+  progressDiv.classList.remove('hidden');
+  submitBtn.disabled = true;
+  
+  const formData = new FormData();
+  filesToUpload.forEach(file => formData.append('photos', file));
+  
+  statusText.textContent = `Uploading ${filesToUpload.length} photos...`;
+  progressBar.style.width = '10%';
+  
+  try {
+    const response = await fetch('/api/items/upload', {
+      method: 'POST',
+      body: formData
+    });
+    
+    progressBar.style.width = '90%';
+    const data = await response.json();
+    
+    const successful = data.results.filter(r => r.success).length;
+    const failed = data.results.filter(r => !r.success).length;
+    
+    progressBar.style.width = '100%';
+    statusText.textContent = `Done! ${successful} uploaded${failed > 0 ? `, ${failed} failed` : ''}`;
+    
+    setTimeout(async () => {
+      closeUploadModal();
+      await loadPhotos();
+      await loadUserInfo();
+    }, 1500);
+    
+  } catch (err) {
+    statusText.textContent = `Error: ${err.message}`;
+    submitBtn.disabled = false;
+  }
+}
+
+// Initialize
+async function init() {
+  await Promise.all([
+    loadUserInfo(),
+    loadPhotos(),
+    loadPlaylists(),
+    loadFrames()
+  ]);
+}
+
+init();
+</script>
+</body>
+</html>
