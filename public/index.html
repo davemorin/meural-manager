@@ -1082,26 +1082,29 @@ async function confirmAddToPlaylist() {
   const playlistId = document.getElementById('playlist-select').value;
   if (!playlistId) return;
   
-  const count = selectedPhotos.size;
+  const items = [...selectedPhotos];
+  const count = items.length;
   const playlistName = document.getElementById('playlist-select').selectedOptions[0]?.text || 'playlist';
   
   closePlaylistModal();
   
   // Show progress on button
   const btn = document.getElementById('add-to-playlist');
-  btn.textContent = 'Adding...';
   btn.disabled = true;
   
   let added = 0;
   let failed = 0;
-  
-  for (const itemId of selectedPhotos) {
-    try {
-      await api(`/galleries/${playlistId}/items/${itemId}`, { method: 'POST' });
-      added++;
-    } catch (err) {
-      failed++;
-    }
+  const concurrency = 4;
+
+  for (let i = 0; i < items.length; i += concurrency) {
+    const batch = items.slice(i, i + concurrency);
+    const results = await Promise.allSettled(
+      batch.map(itemId => api(`/galleries/${playlistId}/items/${itemId}`, { method: 'POST' }))
+    );
+    results.forEach(r => {
+      if (r.status === 'fulfilled') added++; else failed++;
+    });
+    btn.textContent = `Adding ${added + failed}/${count}...`;
   }
   
   showToast(`Added ${added} photo${added !== 1 ? 's' : ''} to "${playlistName}"${failed > 0 ? ` (${failed} failed)` : ''}`);
@@ -1120,10 +1123,10 @@ async function selectPlaylist(id) {
   renderPlaylists();
   
   const container = document.getElementById('playlist-items');
-  container.innerHTML = '<div class="loading">Loading</div>';
+  container.innerHTML = '<div class="loading">Loading all photos...</div>';
   
   try {
-    const data = await api(`/galleries/${id}/items?count=100`);
+    const data = await api(`/galleries/${id}/items?all=true`);
     console.log('Playlist items response:', data);
     const items = data.data || [];
     
@@ -1131,12 +1134,33 @@ async function selectPlaylist(id) {
       container.innerHTML = '<div class="empty">No items in this playlist</div>';
       return;
     }
+
+    // Sort by date taken (EXIF) — most recent first, fall back to createdAt
+    items.sort((a, b) => {
+      const dateA = a.dateTaken ? new Date(a.dateTaken) : new Date(a.createdAt || 0);
+      const dateB = b.dateTaken ? new Date(b.dateTaken) : new Date(b.createdAt || 0);
+      return dateB - dateA;
+    });
+
+    // Show count header
+    const playlist = playlists.find(p => p.id === id);
+    const headerHtml = `<div style="grid-column: 1 / -1; padding: 0.5rem 0; color: #888; font-size: 0.9rem; border-bottom: 1px solid #3a3a3a; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+      <span><strong>${playlist?.name || 'Playlist'}</strong> — ${items.length} photo${items.length !== 1 ? 's' : ''}</span>
+      <span style="font-size: 0.8rem;">Newest taken first</span>
+    </div>`;
     
-    container.innerHTML = items.map(item => `
+    const formatDate = (d) => {
+      if (!d) return '';
+      const date = new Date(d);
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+    
+    container.innerHTML = headerHtml + items.map(item => `
       <div class="card" data-id="${item.id}">
         <img src="${item.image || item.hero || item.thumbnail || ''}" alt="${item.name || ''}" loading="lazy">
         <div class="card-info">
           <div class="card-title">${item.name || 'Untitled'}</div>
+          ${item.dateTaken ? `<div style="color: #888; font-size: 0.75rem;">${formatDate(item.dateTaken)}</div>` : ''}
           <button class="danger" onclick="removeFromPlaylist(${activePlaylist}, ${item.id})" style="margin-top: 0.5rem; width: 100%; padding: 0.25rem;">Remove</button>
         </div>
       </div>
@@ -1289,27 +1313,66 @@ async function submitUpload() {
   
   const formData = new FormData();
   filesToUpload.forEach(file => formData.append('photos', file));
+  const totalFiles = filesToUpload.length;
   
-  statusText.textContent = `Uploading ${filesToUpload.length} photos...`;
-  progressBar.style.width = '10%';
+  statusText.textContent = `Uploading 0/${totalFiles} photos...`;
+  progressBar.style.width = '2%';
   
   try {
-    const response = await fetch('/api/items/upload', {
+    const response = await fetch('/api/items/upload-stream', {
       method: 'POST',
       body: formData
     });
-    
-    progressBar.style.width = '90%';
-    const data = await response.json();
-    
-    const successful = data.results.filter(r => r.success).length;
-    const failed = data.results.filter(r => !r.success).length;
-    
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let completed = 0;
+    let successful = 0;
+    let failed = 0;
+    let allResults = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // keep incomplete line in buffer
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const payload = JSON.parse(line.slice(6));
+            
+            // Check what event preceded this data line
+            if (payload.total && !payload.completed) {
+              // start event
+              statusText.textContent = `Uploading 0/${payload.total} photos...`;
+            } else if (payload.completed !== undefined) {
+              // progress event
+              completed = payload.completed;
+              if (payload.success) successful++; else failed++;
+              const pct = Math.round((completed / totalFiles) * 100);
+              progressBar.style.width = `${pct}%`;
+              const failText = failed > 0 ? ` (${failed} failed)` : '';
+              statusText.textContent = `Uploaded ${completed}/${totalFiles}${failText} — ${payload.filename}`;
+            } else if (payload.results) {
+              // done event
+              allResults = payload.results;
+            } else if (payload.message) {
+              // error event
+              statusText.textContent = `Error: ${payload.message}`;
+            }
+          } catch (e) { /* ignore parse errors in stream */ }
+        }
+      }
+    }
+
     progressBar.style.width = '100%';
-    
-    // Show detailed results with EXIF and AI description
+
     let statusHtml = `<strong>Done!</strong> ${successful} uploaded${failed > 0 ? `, ${failed} failed` : ''}<br><br>`;
-    data.results.filter(r => r.success).forEach(r => {
+    (allResults || []).filter(r => r.success).forEach(r => {
       statusHtml += `<div style="font-size: 0.8rem; margin-bottom: 0.5rem; padding: 0.5rem; background: #1a1a1a; border-radius: 4px;">
         <div><strong>${r.filename}</strong></div>
         ${r.resized ? `<div style="color: #f59e0b;">📐 Resized: ${r.resized.from} → ${r.resized.to}</div>` : ''}

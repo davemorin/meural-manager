@@ -243,116 +243,168 @@ app.get('/api/items', async (req, res) => {
 });
 
 // Upload items (photos)
-app.post('/api/items/upload', upload.array('photos', 50), async (req, res) => {
+// Upload a single photo to Meural (shared helper)
+async function uploadSinglePhoto(file, token, totalFiles) {
+  let fileBuffer = fs.readFileSync(file.path);
+  const exifData = extractExif(fileBuffer, file.originalname);
+  const resizeResult = await resizeIfNeeded(fileBuffer, file.originalname);
+  fileBuffer = resizeResult.buffer;
+
+  const mimeType = resizeResult.resized ? 'image/jpeg' : file.mimetype;
+  const blob = new Blob([fileBuffer], { type: mimeType });
+  const form = new FormData();
+  form.append('image', blob, file.originalname);
+
+  const response = await fetch(`${MEURAL_API}/items`, {
+    method: 'POST',
+    headers: { 'Authorization': `Token ${token}` },
+    body: form
+  });
+
+  const responseText = await response.text();
+  let data;
   try {
-    const token = await getToken();
-    const results = [];
-    
-    for (const file of req.files) {
-      try {
-        // Read file
-        let fileBuffer = fs.readFileSync(file.path);
-        
-        // Extract EXIF before any processing
-        const exifData = extractExif(fileBuffer, file.originalname);
-        
-        // Resize if needed (over 20MB)
-        const resizeResult = await resizeIfNeeded(fileBuffer, file.originalname);
-        fileBuffer = resizeResult.buffer;
-        
-        // Create proper form data for upload
-        const mimeType = resizeResult.resized ? 'image/jpeg' : file.mimetype;
-        const blob = new Blob([fileBuffer], { type: mimeType });
-        const form = new FormData();
-        form.append('image', blob, file.originalname);
-        
-        const response = await fetch(`${MEURAL_API}/items`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Token ${token}`,
-          },
-          body: form
-        });
-        
-        const data = await response.json();
-        
-        // If upload succeeded, do reverse geocoding, vision analysis, and save EXIF
-        let location = null;
-        let smartDescription = null;
-        let visionCaption = null;
-        
-        if (response.ok && data.data?.id) {
-          // Reverse geocode if we have GPS
-          if (exifData.gps_latitude && exifData.gps_longitude) {
-            location = await reverseGeocode(exifData.gps_latitude, exifData.gps_longitude);
-            if (location) {
-              exifData.location_name = location.display_name;
-            }
-          }
-          
-          // Analyze image with Claude Vision
-          visionCaption = await analyzeImageWithVision(fileBuffer, file.mimetype);
-          
-          // Generate smart description
-          smartDescription = await generateSmartDescription(exifData, location, visionCaption);
-          
-          // Auto-apply description to Meural if we generated one
-          if (smartDescription) {
-            try {
-              // Try both name and description fields
-              const updateResult = await meuralRequest('PUT', `/items/${data.data.id}`, {
-                name: smartDescription,
-                description: smartDescription
-              });
-              console.log(`Applied description to ${data.data.id}: ${smartDescription}`, updateResult);
-            } catch (e) {
-              console.error('Failed to apply description:', e.message);
-            }
-          }
-          
-          // Save to database
-          savePhotoExif(data.data.id, file.originalname, exifData);
-        }
-        
-        results.push({ 
-          filename: file.originalname, 
-          success: response.ok, 
-          meural_id: response.ok ? data.data?.id : null,
-          data: response.ok ? data : null,
-          resized: resizeResult.resized ? {
-            from: `${(resizeResult.originalSize / 1024 / 1024).toFixed(1)}MB`,
-            to: `${(resizeResult.newSize / 1024 / 1024).toFixed(1)}MB`,
-            dimensions: resizeResult.dimensions
-          } : null,
-          exif: response.ok ? {
-            date_taken: exifData.date_taken,
-            camera: exifData.camera_model,
-            lens: exifData.lens_model,
-            aperture: exifData.aperture,
-            shutter: exifData.shutter_speed,
-            iso: exifData.iso,
-            gps: exifData.gps_latitude ? true : false,
-            location: location?.city || location?.display_name || null,
-            season: getSeason(exifData.date_taken)
-          } : null,
-          vision_caption: visionCaption,
-          smart_description: smartDescription,
-          error: response.ok ? null : data
-        });
-        
-        // Clean up temp file
-        fs.unlinkSync(file.path);
-      } catch (err) {
-        results.push({ 
-          filename: file.originalname, 
-          success: false, 
-          error: err.message 
-        });
-        // Clean up temp file on error too
-        try { fs.unlinkSync(file.path); } catch (e) {}
+    data = JSON.parse(responseText);
+  } catch (parseErr) {
+    console.error(`Upload failed for ${file.originalname}: HTTP ${response.status}, body: ${responseText.substring(0, 300)}`);
+    throw new Error(`Meural API returned non-JSON (HTTP ${response.status}).`);
+  }
+
+  let location = null;
+  let smartDescription = null;
+  let visionCaption = null;
+
+  if (response.ok && data.data?.id) {
+    if (exifData.gps_latitude && exifData.gps_longitude) {
+      location = await reverseGeocode(exifData.gps_latitude, exifData.gps_longitude);
+      if (location) exifData.location_name = location.display_name;
+    }
+
+    if (totalFiles <= 5) {
+      visionCaption = await analyzeImageWithVision(fileBuffer, file.mimetype);
+      smartDescription = await generateSmartDescription(exifData, location, visionCaption);
+      if (smartDescription) {
+        try {
+          await meuralRequest('PUT', `/items/${data.data.id}`, { name: smartDescription, description: smartDescription });
+        } catch (e) { console.error('Failed to apply description:', e.message); }
       }
     }
-    
+
+    savePhotoExif(data.data.id, file.originalname, exifData);
+  }
+
+  fs.unlinkSync(file.path);
+
+  return {
+    filename: file.originalname,
+    success: response.ok,
+    meural_id: response.ok ? data.data?.id : null,
+    resized: resizeResult.resized ? {
+      from: `${(resizeResult.originalSize / 1024 / 1024).toFixed(1)}MB`,
+      to: `${(resizeResult.newSize / 1024 / 1024).toFixed(1)}MB`,
+      dimensions: resizeResult.dimensions
+    } : null,
+    exif: response.ok ? {
+      date_taken: exifData.date_taken,
+      camera: exifData.camera_model,
+      lens: exifData.lens_model,
+      aperture: exifData.aperture,
+      shutter: exifData.shutter_speed,
+      iso: exifData.iso,
+      gps: exifData.gps_latitude ? true : false,
+      location: location?.city || location?.display_name || null,
+      season: getSeason(exifData.date_taken)
+    } : null,
+    vision_caption: visionCaption,
+    smart_description: smartDescription,
+    error: response.ok ? null : data
+  };
+}
+
+// SSE streaming upload endpoint — real-time progress + parallel uploads
+app.post('/api/items/upload-stream', upload.any(), async (req, res) => {
+  const files = req.files || [];
+  if (files.length === 0) {
+    return res.status(400).json({ error: 'No files received' });
+  }
+
+  // Set up SSE
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive'
+  });
+
+  const send = (event, data) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  try {
+    const token = await getToken();
+    const total = files.length;
+    const concurrency = 4;
+    let completed = 0;
+    const results = [];
+
+    send('start', { total });
+
+    // Process in parallel batches
+    for (let i = 0; i < files.length; i += concurrency) {
+      const batch = files.slice(i, i + concurrency);
+      const batchResults = await Promise.allSettled(
+        batch.map(async (file) => {
+          try {
+            const result = await uploadSinglePhoto(file, token, total);
+            completed++;
+            send('progress', { completed, total, filename: result.filename, success: result.success });
+            return result;
+          } catch (err) {
+            completed++;
+            const failResult = { filename: file.originalname, success: false, error: err.message };
+            send('progress', { completed, total, filename: file.originalname, success: false, error: err.message });
+            try { fs.unlinkSync(file.path); } catch (e) {}
+            return failResult;
+          }
+        })
+      );
+      results.push(...batchResults.map(r => r.status === 'fulfilled' ? r.value : r.reason));
+    }
+
+    send('done', { results });
+  } catch (err) {
+    send('error', { message: err.message });
+  }
+
+  res.end();
+});
+
+// Legacy non-streaming upload endpoint (kept for backward compat)
+app.post('/api/items/upload', upload.any(), async (req, res) => {
+  try {
+    const token = await getToken();
+    const files = req.files || [];
+    if (files.length === 0) {
+      return res.status(400).json({ error: 'No files received' });
+    }
+
+    const concurrency = 4;
+    const results = [];
+
+    for (let i = 0; i < files.length; i += concurrency) {
+      const batch = files.slice(i, i + concurrency);
+      const batchResults = await Promise.allSettled(
+        batch.map(async (file) => {
+          try {
+            return await uploadSinglePhoto(file, token, files.length);
+          } catch (err) {
+            try { fs.unlinkSync(file.path); } catch (e) {}
+            return { filename: file.originalname, success: false, error: err.message };
+          }
+        })
+      );
+      results.push(...batchResults.map(r => r.status === 'fulfilled' ? r.value : r.reason));
+    }
+
     res.json({ results });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -581,13 +633,37 @@ app.get('/api/galleries', async (req, res) => {
   }
 });
 
-// Get items in a gallery
+// Get items in a gallery (paginated or all)
 app.get('/api/galleries/:id/items', async (req, res) => {
   try {
-    const page = req.query.page || 1;
-    const count = req.query.count || 100;
-    const data = await meuralRequest('GET', `/galleries/${req.params.id}/items?page=${page}&count=${count}`);
-    res.json(data);
+    if (req.query.all === 'true') {
+      // Fetch all items across all pages
+      let allItems = [];
+      let page = 1;
+      const perPage = 100;
+      while (true) {
+        const data = await meuralRequest('GET', `/galleries/${req.params.id}/items?page=${page}&count=${perPage}`);
+        const items = data.data || [];
+        allItems = allItems.concat(items);
+        if (items.length < perPage || data.isLast) break;
+        page++;
+      }
+      // Enrich with local EXIF date_taken
+      const exifLookup = {};
+      try {
+        const exifRows = db.prepare('SELECT meural_id, date_taken FROM photos WHERE date_taken IS NOT NULL').all();
+        exifRows.forEach(r => { exifLookup[r.meural_id] = r.date_taken; });
+      } catch (e) {}
+      allItems.forEach(item => {
+        item.dateTaken = exifLookup[item.id] || null;
+      });
+      res.json({ data: allItems, count: allItems.length });
+    } else {
+      const page = req.query.page || 1;
+      const count = req.query.count || 100;
+      const data = await meuralRequest('GET', `/galleries/${req.params.id}/items?page=${page}&count=${count}`);
+      res.json(data);
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
