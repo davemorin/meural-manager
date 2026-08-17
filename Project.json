@@ -1,0 +1,42 @@
+{
+  "name": "MeuralManager",
+  "options": {
+    "bundleIdPrefix": "com.davemorin",
+    "deploymentTarget": {
+      "iOS": "18.0"
+    }
+  },
+  "targets": {
+    "MeuralManager": {
+      "type": "application",
+      "platform": "iOS",
+      "sources": [
+        "App"
+      ],
+      "settings": {
+        "base": {
+          "TARGETED_DEVICE_FAMILY": "1,2",
+          "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+          "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor",
+          "SWIFT_VERSION": "6.0"
+        }
+      },
+      "info": {
+        "path": "App/Info.plist",
+        "properties": {
+          "CFBundleDisplayName": "Meural Manager",
+          "UILaunchScreen": {},
+          "UISupportedInterfaceOrientations": [
+            "UIInterfaceOrientationPortrait",
+            "UIInterfaceOrientationLandscapeLeft",
+            "UIInterfaceOrientationLandscapeRight"
+          ],
+          "NSAppTransportSecurity": {
+            "NSAllowsArbitraryLoads": true
+          },
+          "NSLocalNetworkUsageDescription": "Meural Manager connects to your self-hosted Meural Manager server on your local network to browse and manage your photos, playlists, and frames."
+        }
+      }
+    }
+  }
+}
