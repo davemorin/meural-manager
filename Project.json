@@ -1,5 +1,5 @@
 {
-  "name": "Gallerist",
+  "name": "Artwall",
   "options": {
     "bundleIdPrefix": "com.davemorin",
     "deploymentTarget": {
@@ -7,7 +7,7 @@
     }
   },
   "targets": {
-    "Gallerist": {
+    "Artwall": {
       "type": "application",
       "platform": "iOS",
       "sources": [
@@ -24,7 +24,7 @@
       "info": {
         "path": "App/Info.plist",
         "properties": {
-          "CFBundleDisplayName": "Gallerist",
+          "CFBundleDisplayName": "Artwall",
           "UILaunchScreen": {},
           "UISupportedInterfaceOrientations": [
             "UIInterfaceOrientationPortrait",

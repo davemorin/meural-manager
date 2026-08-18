@@ -16,7 +16,7 @@ struct AccountView: View {
         }
 
         Section("About") {
-          LabeledContent("App", value: "Gallerist")
+          LabeledContent("App", value: "Artwall")
           Text("Manage your Meural library, playlists, and frames — no server required. The app talks directly to your Meural account.")
             .font(.footnote)
             .foregroundStyle(.secondary)

@@ -3,7 +3,7 @@ import Security
 
 /// Minimal Keychain wrapper for storing the Meural account password.
 enum KeychainStore {
-  private static let service = "com.davemorin.Gallerist"
+  private static let service = "com.davemorin.Artwall"
 
   static func save(_ value: String, forKey key: String) {
     delete(key)
