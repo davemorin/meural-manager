@@ -26,6 +26,7 @@
         "path": "App/Info.plist",
         "properties": {
           "CFBundleDisplayName": "Artwall",
+          "ITSAppUsesNonExemptEncryption": false,
           "UILaunchScreen": {},
           "UISupportedInterfaceOrientations": [
             "UIInterfaceOrientationPortrait",
