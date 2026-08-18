@@ -99,7 +99,7 @@ final class LibraryStore {
       hasMorePhotos = !result.isLast
       nextPage += 1
     } catch {
-      report(error)
+      report(error, "Couldn't load photos")
     }
   }
 
@@ -113,7 +113,7 @@ final class LibraryStore {
       }
       await loadUser(force: true)
     } catch {
-      report(error)
+      report(error, "Couldn't delete photos")
     }
   }
 
@@ -227,7 +227,7 @@ final class LibraryStore {
     do {
       playlists = try await withClient { try await $0.fetchPlaylists() }
     } catch {
-      report(error)
+      report(error, "Couldn't load playlists")
     }
   }
 
@@ -235,7 +235,7 @@ final class LibraryStore {
     do {
       return try await withClient { try await $0.fetchPlaylistItems(id: id) }
     } catch {
-      report(error)
+      report(error, "Couldn't load the playlist")
       return []
     }
   }
@@ -247,7 +247,7 @@ final class LibraryStore {
       try await withClient { try await $0.createPlaylist(name: trimmed) }
       await loadPlaylists(force: true)
     } catch {
-      report(error)
+      report(error, "Couldn't create the playlist")
     }
   }
 
@@ -258,7 +258,7 @@ final class LibraryStore {
         try await withClient { try await $0.deletePlaylist(id: playlist.id) }
         playlists.removeAll { $0.id == playlist.id }
       } catch {
-        report(error)
+        report(error, "Couldn't delete the playlist")
       }
     }
   }
@@ -268,7 +268,7 @@ final class LibraryStore {
       try await withClient { try await $0.addPhoto(photoID, toPlaylist: playlistID) }
       await loadPlaylists(force: true)
     } catch {
-      report(error)
+      report(error, "Couldn't add to the playlist")
     }
   }
 
@@ -279,7 +279,7 @@ final class LibraryStore {
       await loadPlaylists(force: true)
       return true
     } catch {
-      report(error)
+      report(error, "Couldn't remove from the playlist")
       return false
     }
   }
@@ -291,7 +291,7 @@ final class LibraryStore {
     do {
       user = try await withClient { try await $0.fetchUser() }
     } catch {
-      report(error)
+      report(error, "Couldn't load account info")
     }
   }
 
@@ -302,7 +302,7 @@ final class LibraryStore {
     do {
       frames = try await withClient { try await $0.fetchFrames() }
     } catch {
-      report(error)
+      report(error, "Couldn't load frames")
     }
   }
 
@@ -311,7 +311,7 @@ final class LibraryStore {
       try await withClient { try await $0.assignPlaylist(playlistID, toFrame: frameID) }
       await loadFrames(force: true)
     } catch {
-      report(error)
+      report(error, "Couldn't update the frame")
     }
   }
 
@@ -330,8 +330,31 @@ final class LibraryStore {
     }
   }
 
-  private func report(_ error: Error) {
-    errorMessage = error.localizedDescription
+  private func report(_ error: Error, _ context: String) {
+    errorMessage = "\(context). \(Self.describe(error))"
+  }
+
+  private static func describe(_ error: Error) -> String {
+    guard let decodingError = error as? DecodingError else {
+      return error.localizedDescription
+    }
+    switch decodingError {
+    case .keyNotFound(let key, _):
+      return "Meural sent unexpected data (missing \"\(key.stringValue)\")."
+    case .typeMismatch(_, let context):
+      return "Meural sent unexpected data (wrong type at \(Self.path(context)))."
+    case .valueNotFound(_, let context):
+      return "Meural sent unexpected data (missing value at \(Self.path(context)))."
+    case .dataCorrupted(let context):
+      return "Meural sent unexpected data (\(context.debugDescription))"
+    @unknown default:
+      return "Meural sent unexpected data."
+    }
+  }
+
+  private static func path(_ context: DecodingError.Context) -> String {
+    let path = context.codingPath.map(\.stringValue).joined(separator: ".")
+    return path.isEmpty ? "top level" : "\"\(path)\""
   }
 }
 

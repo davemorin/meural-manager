@@ -19,4 +19,16 @@ struct MeuralUser: Decodable, Hashable {
   var totalGigabytes: Double? {
     totalStorage.map { $0 / 1024 }
   }
+
+  private enum CodingKeys: String, CodingKey {
+    case id, email, usedStorage, totalStorage
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    id = container.lenientInt(.id)
+    email = container.lenientString(.email)
+    usedStorage = container.lenientDouble(.usedStorage)
+    totalStorage = container.lenientDouble(.totalStorage)
+  }
 }

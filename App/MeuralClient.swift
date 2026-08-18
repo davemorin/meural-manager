@@ -20,8 +20,8 @@ struct MeuralClient {
       URLQueryItem(name: "count", value: String(count))
     ]
     let data = try await data(for: "GET", path: "user/items", query: query)
-    let envelope = try JSONDecoder().decode(APIEnvelope<[MeuralPhoto]>.self, from: data)
-    let photos = envelope.data ?? []
+    let envelope = try JSONDecoder().decode(APIEnvelope<LossyArray<MeuralPhoto>>.self, from: data)
+    let photos = envelope.data?.elements ?? []
     return (photos, envelope.isLast ?? (photos.count < count))
   }
 
@@ -66,7 +66,7 @@ struct MeuralClient {
   // MARK: - Playlists
 
   func fetchPlaylists() async throws -> [MeuralPlaylist] {
-    try await decodeEnvelope([MeuralPlaylist].self, from: data(for: "GET", path: "user/galleries"))
+    try await decodeEnvelope(LossyArray<MeuralPlaylist>.self, from: data(for: "GET", path: "user/galleries")).elements
   }
 
   func fetchPlaylistItems(id: Int) async throws -> [MeuralPhoto] {
@@ -79,8 +79,8 @@ struct MeuralClient {
         URLQueryItem(name: "count", value: String(perPage))
       ]
       let data = try await data(for: "GET", path: "galleries/\(id)/items", query: query)
-      let envelope = try JSONDecoder().decode(APIEnvelope<[MeuralPhoto]>.self, from: data)
-      let items = envelope.data ?? []
+      let envelope = try JSONDecoder().decode(APIEnvelope<LossyArray<MeuralPhoto>>.self, from: data)
+      let items = envelope.data?.elements ?? []
       allItems.append(contentsOf: items)
       if items.count < perPage || envelope.isLast == true { break }
       page += 1
@@ -107,7 +107,7 @@ struct MeuralClient {
   // MARK: - Frames
 
   func fetchFrames() async throws -> [MeuralFrame] {
-    try await decodeEnvelope([MeuralFrame].self, from: data(for: "GET", path: "user/devices"))
+    try await decodeEnvelope(LossyArray<MeuralFrame>.self, from: data(for: "GET", path: "user/devices")).elements
   }
 
   func assignPlaylist(_ playlistID: Int, toFrame frameID: Int) async throws {
@@ -120,6 +120,17 @@ struct MeuralClient {
     var data: T?
     var isLast: Bool?
     var error: String?
+
+    private enum CodingKeys: String, CodingKey {
+      case data, isLast, error
+    }
+
+    init(from decoder: Decoder) throws {
+      let container = try decoder.container(keyedBy: CodingKeys.self)
+      data = try container.decodeIfPresent(T.self, forKey: .data)
+      isLast = (try? container.decodeIfPresent(Bool.self, forKey: .isLast)) ?? nil
+      error = container.lenientString(.error)
+    }
   }
 
   private struct ServerErrorPayload: Decodable {
