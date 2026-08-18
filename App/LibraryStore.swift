@@ -9,6 +9,9 @@ final class LibraryStore {
   var frames: [MeuralFrame] = []
 
   var isLoadingPhotos = false
+  var isUploading = false
+  var uploadCompleted = 0
+  var uploadTotal = 0
   var errorMessage: String?
 
   private let session: MeuralSession
@@ -74,6 +77,35 @@ final class LibraryStore {
       }
     } catch {
       report(error)
+    }
+  }
+
+  func uploadPhotos(_ photoData: [Data]) async {
+    guard !photoData.isEmpty, !isUploading else { return }
+    isUploading = true
+    uploadCompleted = 0
+    uploadTotal = photoData.count
+    defer { isUploading = false }
+
+    var failures = 0
+    for data in photoData {
+      if let upload = await UploadPreparer.prepare(data) {
+        do {
+          try await withClient { try await $0.uploadPhoto(upload) }
+        } catch {
+          failures += 1
+        }
+      } else {
+        failures += 1
+      }
+      uploadCompleted += 1
+    }
+
+    await refreshPhotos()
+    if failures == photoData.count {
+      errorMessage = "Couldn't upload the selected photos."
+    } else if failures > 0 {
+      errorMessage = "Uploaded \(photoData.count - failures) of \(photoData.count) photos. \(failures) failed."
     }
   }
 

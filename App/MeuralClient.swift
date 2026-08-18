@@ -38,6 +38,25 @@ struct MeuralClient {
     return deleted
   }
 
+  func uploadPhoto(_ upload: PhotoUpload) async throws {
+    let boundary = "artwall-\(UUID().uuidString)"
+    var request = URLRequest(url: Self.baseURL.appending(path: "items"))
+    request.httpMethod = "POST"
+    request.timeoutInterval = 120
+    request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
+    request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+    var body = Data()
+    body.append(Data("--\(boundary)\r\n".utf8))
+    body.append(Data("Content-Disposition: form-data; name=\"image\"; filename=\"\(upload.filename)\"\r\n".utf8))
+    body.append(Data("Content-Type: \(upload.mimeType)\r\n\r\n".utf8))
+    body.append(upload.data)
+    body.append(Data("\r\n--\(boundary)--\r\n".utf8))
+
+    let (data, response) = try await URLSession.shared.upload(for: request, from: body)
+    try Self.validate(response, data: data)
+  }
+
   // MARK: - Playlists
 
   func fetchPlaylists() async throws -> [MeuralPlaylist] {
@@ -133,14 +152,17 @@ struct MeuralClient {
     }
 
     let (data, response) = try await URLSession.shared.data(for: request)
-    if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-      if http.statusCode == 401 {
-        throw MeuralClientError(message: "Your Meural session expired.", isUnauthorized: true)
-      }
-      let message = (try? JSONDecoder().decode(ServerErrorPayload.self, from: data))?.error
-      throw MeuralClientError(message: message ?? "Meural returned an error (HTTP \(http.statusCode)).")
-    }
+    try Self.validate(response, data: data)
     return data
+  }
+
+  private static func validate(_ response: URLResponse, data: Data) throws {
+    guard let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) else { return }
+    if http.statusCode == 401 {
+      throw MeuralClientError(message: "Your Meural session expired.", isUnauthorized: true)
+    }
+    let message = (try? JSONDecoder().decode(ServerErrorPayload.self, from: data))?.error
+    throw MeuralClientError(message: message ?? "Meural returned an error (HTTP \(http.statusCode)).")
   }
 }
 

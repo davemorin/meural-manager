@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 struct PhotosView: View {
@@ -6,6 +7,7 @@ struct PhotosView: View {
   @State private var selection: Set<Int> = []
   @State private var confirmingDelete = false
   @State private var detailPhoto: MeuralPhoto?
+  @State private var pickerItems: [PhotosPickerItem] = []
 
   private let columns = [GridItem(.adaptive(minimum: 110), spacing: 2)]
 
@@ -62,11 +64,44 @@ struct PhotosView: View {
             .disabled(selection.isEmpty)
           }
         } else {
+          ToolbarItem(placement: .topBarLeading) {
+            PhotosPicker(selection: $pickerItems, matching: .images) {
+              Label("Add Photos", systemImage: "plus")
+            }
+            .disabled(library.isUploading)
+          }
           ToolbarItem(placement: .topBarTrailing) {
             Button("Select") {
               isSelecting = true
             }
           }
+        }
+      }
+      .onChange(of: pickerItems) { _, items in
+        guard !items.isEmpty else { return }
+        Task {
+          var photoData: [Data] = []
+          for item in items {
+            if let data = try? await item.loadTransferable(type: Data.self) {
+              photoData.append(data)
+            }
+          }
+          pickerItems = []
+          await library.uploadPhotos(photoData)
+        }
+      }
+      .safeAreaInset(edge: .bottom) {
+        if library.isUploading {
+          VStack(alignment: .leading, spacing: 6) {
+            Text("Uploading \(min(library.uploadCompleted + 1, library.uploadTotal)) of \(library.uploadTotal)…")
+              .font(.footnote)
+              .foregroundStyle(.secondary)
+            ProgressView(value: Double(library.uploadCompleted), total: Double(max(library.uploadTotal, 1)))
+          }
+          .padding(.horizontal)
+          .padding(.vertical, 10)
+          .frame(maxWidth: .infinity)
+          .background(.bar)
         }
       }
       .refreshable {
