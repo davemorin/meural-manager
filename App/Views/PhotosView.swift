@@ -15,7 +15,7 @@ struct PhotosView: View {
     NavigationStack {
       ScrollView {
         LazyVGrid(columns: columns, spacing: 2) {
-          ForEach(library.photos) { photo in
+          ForEach(library.displayedPhotos) { photo in
             Button {
               if isSelecting {
                 toggleSelection(photo.id)
@@ -26,7 +26,8 @@ struct PhotosView: View {
               PhotoGridCell(
                 photo: photo,
                 showsSelection: isSelecting,
-                isSelected: selection.contains(photo.id)
+                isSelected: selection.contains(photo.id),
+                sizeLabel: sizeLabel(for: photo)
               )
             }
             .buttonStyle(.plain)
@@ -64,11 +65,19 @@ struct PhotosView: View {
             .disabled(selection.isEmpty)
           }
         } else {
-          ToolbarItem(placement: .topBarLeading) {
+          ToolbarItemGroup(placement: .topBarLeading) {
             PhotosPicker(selection: $pickerItems, matching: .images) {
               Label("Add Photos", systemImage: "plus")
             }
             .disabled(library.isUploading)
+            Menu("Sort", systemImage: "arrow.up.arrow.down") {
+              Picker("Sort", selection: sortBinding) {
+                ForEach(PhotoSort.allCases, id: \.self) { sort in
+                  Text(sort.label).tag(sort)
+                }
+              }
+            }
+            .disabled(library.isSizingPhotos)
           }
           ToolbarItem(placement: .topBarTrailing) {
             Button("Select") {
@@ -92,16 +101,17 @@ struct PhotosView: View {
       }
       .safeAreaInset(edge: .bottom) {
         if library.isUploading {
-          VStack(alignment: .leading, spacing: 6) {
-            Text("Uploading \(min(library.uploadCompleted + 1, library.uploadTotal)) of \(library.uploadTotal)…")
-              .font(.footnote)
-              .foregroundStyle(.secondary)
-            ProgressView(value: Double(library.uploadCompleted), total: Double(max(library.uploadTotal, 1)))
-          }
-          .padding(.horizontal)
-          .padding(.vertical, 10)
-          .frame(maxWidth: .infinity)
-          .background(.bar)
+          progressBar(
+            label: "Uploading \(min(library.uploadCompleted + 1, library.uploadTotal)) of \(library.uploadTotal)…",
+            completed: library.uploadCompleted,
+            total: library.uploadTotal
+          )
+        } else if library.isSizingPhotos {
+          progressBar(
+            label: "Checking sizes — \(library.sizingCompleted) of \(library.sizingTotal)…",
+            completed: library.sizingCompleted,
+            total: library.sizingTotal
+          )
         }
       }
       .refreshable {
@@ -157,6 +167,34 @@ struct PhotosView: View {
         await library.deletePhotos(ids: [photo.id])
       }
     }
+  }
+
+  private var sortBinding: Binding<PhotoSort> {
+    Binding {
+      library.sortOrder
+    } set: { newValue in
+      Task {
+        await library.setSort(newValue)
+      }
+    }
+  }
+
+  private func sizeLabel(for photo: MeuralPhoto) -> String? {
+    guard library.sortOrder != .newest, let size = library.photoSizes[photo.id], size > 0 else { return nil }
+    return size.formatted(.byteCount(style: .file))
+  }
+
+  private func progressBar(label: String, completed: Int, total: Int) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text(label)
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+      ProgressView(value: Double(completed), total: Double(max(total, 1)))
+    }
+    .padding(.horizontal)
+    .padding(.vertical, 10)
+    .frame(maxWidth: .infinity)
+    .background(.bar)
   }
 
   private func toggleSelection(_ id: Int) {

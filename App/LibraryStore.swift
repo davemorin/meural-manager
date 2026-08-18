@@ -1,6 +1,20 @@
 import Foundation
 import Observation
 
+enum PhotoSort: String, CaseIterable {
+  case newest
+  case largestFirst
+  case smallestFirst
+
+  var label: String {
+    switch self {
+    case .newest: "Recently Added"
+    case .largestFirst: "Largest First"
+    case .smallestFirst: "Smallest First"
+    }
+  }
+}
+
 @MainActor
 @Observable
 final class LibraryStore {
@@ -15,6 +29,24 @@ final class LibraryStore {
   var uploadTotal = 0
   var errorMessage: String?
 
+  var sortOrder: PhotoSort = .newest
+  // Original-file sizes in bytes, probed from the CDN; 0 marks a failed probe.
+  var photoSizes: [Int: Int64] = [:]
+  var isSizingPhotos = false
+  var sizingCompleted = 0
+  var sizingTotal = 0
+
+  var displayedPhotos: [MeuralPhoto] {
+    switch sortOrder {
+    case .newest:
+      photos
+    case .largestFirst:
+      photos.sorted { (photoSizes[$0.id] ?? 0) > (photoSizes[$1.id] ?? 0) }
+    case .smallestFirst:
+      photos.sorted { (photoSizes[$0.id] ?? 0) < (photoSizes[$1.id] ?? 0) }
+    }
+  }
+
   private let session: MeuralSession
   private var nextPage = 1
   private var hasMorePhotos = true
@@ -28,6 +60,8 @@ final class LibraryStore {
     playlists = []
     frames = []
     user = nil
+    sortOrder = .newest
+    photoSizes = [:]
     nextPage = 1
     hasMorePhotos = true
     errorMessage = nil
@@ -81,6 +115,79 @@ final class LibraryStore {
     } catch {
       report(error)
     }
+  }
+
+  func setSort(_ sort: PhotoSort) async {
+    sortOrder = sort
+    guard sort != .newest else { return }
+    await loadAllPhotos()
+    await fetchMissingSizes()
+  }
+
+  /// Loads every remaining page so size sorting covers the whole library.
+  private func loadAllPhotos() async {
+    while hasMorePhotos {
+      let before = photos.count
+      await loadNextPhotoPage(replacing: false)
+      if photos.count == before { break }
+    }
+  }
+
+  private func fetchMissingSizes() async {
+    guard !isSizingPhotos else { return }
+    let missing = photos.filter { photoSizes[$0.id] == nil && $0.sizeProbeURL != nil }
+    guard !missing.isEmpty else { return }
+    isSizingPhotos = true
+    sizingCompleted = 0
+    sizingTotal = missing.count
+    defer { isSizingPhotos = false }
+
+    for chunk in missing.chunked(into: 6) {
+      await withTaskGroup(of: (Int, Int64?).self) { group in
+        for photo in chunk {
+          guard let url = photo.sizeProbeURL else { continue }
+          let id = photo.id
+          group.addTask {
+            (id, await Self.contentLength(of: url))
+          }
+        }
+        for await (id, size) in group {
+          photoSizes[id] = size ?? 0
+          sizingCompleted += 1
+        }
+      }
+    }
+  }
+
+  func fetchSize(for photo: MeuralPhoto) async -> Int64? {
+    if let cached = photoSizes[photo.id] {
+      return cached > 0 ? cached : nil
+    }
+    guard let url = photo.sizeProbeURL else { return nil }
+    let size = await Self.contentLength(of: url)
+    photoSizes[photo.id] = size ?? 0
+    return size
+  }
+
+  private nonisolated static func contentLength(of url: URL) async -> Int64? {
+    var request = URLRequest(url: url)
+    request.httpMethod = "HEAD"
+    request.timeoutInterval = 15
+    if let (_, response) = try? await URLSession.shared.data(for: request),
+       response.expectedContentLength > 0 {
+      return response.expectedContentLength
+    }
+    // Some CDNs reject HEAD; ask for a single byte and read the full size
+    // from the Content-Range header instead.
+    var rangeRequest = URLRequest(url: url)
+    rangeRequest.timeoutInterval = 15
+    rangeRequest.setValue("bytes=0-0", forHTTPHeaderField: "Range")
+    guard let (_, response) = try? await URLSession.shared.data(for: rangeRequest),
+          let http = response as? HTTPURLResponse,
+          let contentRange = http.value(forHTTPHeaderField: "Content-Range"),
+          let totalPart = contentRange.split(separator: "/").last,
+          let total = Int64(totalPart), total > 0 else { return nil }
+    return total
   }
 
   func uploadPhotos(_ photoData: [Data]) async {
@@ -225,5 +332,13 @@ final class LibraryStore {
 
   private func report(_ error: Error) {
     errorMessage = error.localizedDescription
+  }
+}
+
+private extension Array {
+  func chunked(into size: Int) -> [[Element]] {
+    stride(from: 0, to: count, by: size).map {
+      Array(self[$0..<Swift.min($0 + size, count)])
+    }
   }
 }

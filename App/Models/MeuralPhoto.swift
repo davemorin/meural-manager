@@ -5,6 +5,7 @@ struct MeuralPhoto: Identifiable, Decodable, Hashable {
   var name: String?
   var description: String?
   var image: String?
+  var originalImage: String?
   var thumbnail: String?
   var author: String?
   var orientation: String?
@@ -15,6 +16,11 @@ struct MeuralPhoto: Identifiable, Decodable, Hashable {
 
   var imageURL: URL? {
     URL(string: image ?? thumbnail ?? "")
+  }
+
+  /// The original uploaded file, used to measure true storage size.
+  var sizeProbeURL: URL? {
+    URL(string: originalImage ?? image ?? thumbnail ?? "")
   }
 
   var displayName: String {

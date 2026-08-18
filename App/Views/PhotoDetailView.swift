@@ -1,9 +1,14 @@
+import ImageIO
 import SwiftUI
 
 struct PhotoDetailView: View {
   @Environment(LibraryStore.self) private var library
   @Environment(\.dismiss) private var dismiss
   var photo: MeuralPhoto
+
+  @State private var fileSize: Int64?
+  @State private var pixelWidth: Int?
+  @State private var pixelHeight: Int?
 
   var body: some View {
     ScrollView {
@@ -36,6 +41,22 @@ struct PhotoDetailView: View {
           }
         }
         .padding(.horizontal)
+
+        VStack(spacing: 0) {
+          if let fileSize {
+            metadataRow("File Size", fileSize.formatted(.byteCount(style: .file)))
+            Divider()
+          }
+          if let pixelWidth, let pixelHeight {
+            metadataRow("Dimensions", "\(pixelWidth) × \(pixelHeight)")
+            Divider()
+          }
+          if let orientation = photo.orientation, !orientation.isEmpty {
+            metadataRow("Orientation", orientation.capitalized)
+          }
+        }
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -63,6 +84,32 @@ struct PhotoDetailView: View {
     }
     .task {
       await library.loadPlaylists()
+      fileSize = await library.fetchSize(for: photo)
+      await loadDimensions()
     }
+  }
+
+  private func metadataRow(_ label: String, _ value: String) -> some View {
+    HStack {
+      Text(label)
+        .foregroundStyle(.secondary)
+      Spacer()
+      Text(value)
+    }
+    .font(.subheadline)
+    .padding(.horizontal, 16)
+    .padding(.vertical, 10)
+    .accessibilityElement(children: .combine)
+  }
+
+  private func loadDimensions() async {
+    guard let url = photo.imageURL,
+          let (data, _) = try? await URLSession.shared.data(from: url),
+          let source = CGImageSourceCreateWithData(data as CFData, nil),
+          let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+          let width = properties[kCGImagePropertyPixelWidth] as? Int,
+          let height = properties[kCGImagePropertyPixelHeight] as? Int else { return }
+    pixelWidth = width
+    pixelHeight = height
   }
 }

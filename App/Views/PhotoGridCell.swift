@@ -4,6 +4,7 @@ struct PhotoGridCell: View {
   var photo: MeuralPhoto
   var showsSelection = false
   var isSelected = false
+  var sizeLabel: String?
 
   var body: some View {
     Color(.secondarySystemBackground)
@@ -20,6 +21,17 @@ struct PhotoGridCell: View {
         }
       }
       .clipped()
+      .overlay(alignment: .bottomLeading) {
+        if let sizeLabel {
+          Text(sizeLabel)
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(.black.opacity(0.55), in: Capsule())
+            .padding(4)
+        }
+      }
       .overlay(alignment: .bottomTrailing) {
         if showsSelection {
           Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
