@@ -7,6 +7,7 @@ final class LibraryStore {
   var photos: [MeuralPhoto] = []
   var playlists: [MeuralPlaylist] = []
   var frames: [MeuralFrame] = []
+  var user: MeuralUser?
 
   var isLoadingPhotos = false
   var isUploading = false
@@ -26,6 +27,7 @@ final class LibraryStore {
     photos = []
     playlists = []
     frames = []
+    user = nil
     nextPage = 1
     hasMorePhotos = true
     errorMessage = nil
@@ -75,6 +77,7 @@ final class LibraryStore {
       if deleted.count < ids.count {
         errorMessage = "Deleted \(deleted.count) of \(ids.count) photos. Try the rest again."
       }
+      await loadUser(force: true)
     } catch {
       report(error)
     }
@@ -102,6 +105,7 @@ final class LibraryStore {
     }
 
     await refreshPhotos()
+    await loadUser(force: true)
     if failures == photoData.count {
       errorMessage = "Couldn't upload the selected photos."
     } else if failures > 0 {
@@ -170,6 +174,17 @@ final class LibraryStore {
     } catch {
       report(error)
       return false
+    }
+  }
+
+  // MARK: - Account
+
+  func loadUser(force: Bool = false) async {
+    guard force || user == nil else { return }
+    do {
+      user = try await withClient { try await $0.fetchUser() }
+    } catch {
+      report(error)
     }
   }
 

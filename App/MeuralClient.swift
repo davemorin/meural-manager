@@ -6,6 +6,12 @@ struct MeuralClient {
 
   private static let baseURL = URL(string: "https://api.meural.com/v0")!
 
+  // MARK: - Account
+
+  func fetchUser() async throws -> MeuralUser {
+    try await decodeEnvelope(MeuralUser.self, from: data(for: "GET", path: "user"))
+  }
+
   // MARK: - Photos
 
   func fetchPhotos(page: Int, count: Int = 100) async throws -> (photos: [MeuralPhoto], isLast: Bool) {
