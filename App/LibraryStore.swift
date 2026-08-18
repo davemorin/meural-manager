@@ -11,26 +11,21 @@ final class LibraryStore {
   var isLoadingPhotos = false
   var errorMessage: String?
 
-  var serverURLString: String {
-    didSet {
-      guard oldValue != serverURLString else { return }
-      UserDefaults.standard.set(serverURLString, forKey: Self.serverURLKey)
-      photos = []
-      playlists = []
-      frames = []
-      nextPage = 1
-      hasMorePhotos = true
-    }
-  }
-
-  static let serverURLKey = "serverURL"
-  static let defaultServerURL = "http://localhost:3333"
-
+  private let session: MeuralSession
   private var nextPage = 1
   private var hasMorePhotos = true
 
-  init() {
-    serverURLString = UserDefaults.standard.string(forKey: Self.serverURLKey) ?? Self.defaultServerURL
+  init(session: MeuralSession) {
+    self.session = session
+  }
+
+  func reset() {
+    photos = []
+    playlists = []
+    frames = []
+    nextPage = 1
+    hasMorePhotos = true
+    errorMessage = nil
   }
 
   // MARK: - Photos
@@ -52,11 +47,11 @@ final class LibraryStore {
   }
 
   private func loadNextPhotoPage(replacing: Bool) async {
-    guard !isLoadingPhotos, let client = requireClient() else { return }
+    guard !isLoadingPhotos else { return }
     isLoadingPhotos = true
     defer { isLoadingPhotos = false }
     do {
-      let result = try await client.fetchPhotos(page: nextPage)
+      let result = try await withClient { try await $0.fetchPhotos(page: nextPage) }
       if replacing {
         photos = result.photos
       } else {
@@ -70,10 +65,13 @@ final class LibraryStore {
   }
 
   func deletePhotos(ids: [Int]) async {
-    guard !ids.isEmpty, let client = requireClient() else { return }
+    guard !ids.isEmpty else { return }
     do {
-      try await client.bulkDeletePhotos(ids: ids)
-      photos.removeAll { ids.contains($0.id) }
+      let deleted = try await withClient { try await $0.deletePhotos(ids: ids) }
+      photos.removeAll { deleted.contains($0.id) }
+      if deleted.count < ids.count {
+        errorMessage = "Deleted \(deleted.count) of \(ids.count) photos. Try the rest again."
+      }
     } catch {
       report(error)
     }
@@ -83,18 +81,16 @@ final class LibraryStore {
 
   func loadPlaylists(force: Bool = false) async {
     guard force || playlists.isEmpty else { return }
-    guard let client = requireClient() else { return }
     do {
-      playlists = try await client.fetchPlaylists()
+      playlists = try await withClient { try await $0.fetchPlaylists() }
     } catch {
       report(error)
     }
   }
 
   func playlistItems(id: Int) async -> [MeuralPhoto] {
-    guard let client = requireClient() else { return [] }
     do {
-      return try await client.fetchPlaylistItems(id: id)
+      return try await withClient { try await $0.fetchPlaylistItems(id: id) }
     } catch {
       report(error)
       return []
@@ -103,9 +99,9 @@ final class LibraryStore {
 
   func createPlaylist(named name: String) async {
     let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty, let client = requireClient() else { return }
+    guard !trimmed.isEmpty else { return }
     do {
-      try await client.createPlaylist(name: trimmed)
+      try await withClient { try await $0.createPlaylist(name: trimmed) }
       await loadPlaylists(force: true)
     } catch {
       report(error)
@@ -113,11 +109,10 @@ final class LibraryStore {
   }
 
   func deletePlaylists(at offsets: IndexSet) async {
-    guard let client = requireClient() else { return }
     let toDelete = offsets.compactMap { playlists.indices.contains($0) ? playlists[$0] : nil }
     for playlist in toDelete {
       do {
-        try await client.deletePlaylist(id: playlist.id)
+        try await withClient { try await $0.deletePlaylist(id: playlist.id) }
         playlists.removeAll { $0.id == playlist.id }
       } catch {
         report(error)
@@ -126,9 +121,8 @@ final class LibraryStore {
   }
 
   func addPhoto(_ photoID: Int, toPlaylist playlistID: Int) async {
-    guard let client = requireClient() else { return }
     do {
-      try await client.addPhoto(photoID, toPlaylist: playlistID)
+      try await withClient { try await $0.addPhoto(photoID, toPlaylist: playlistID) }
       await loadPlaylists(force: true)
     } catch {
       report(error)
@@ -137,9 +131,8 @@ final class LibraryStore {
 
   @discardableResult
   func removePhoto(_ photoID: Int, fromPlaylist playlistID: Int) async -> Bool {
-    guard let client = requireClient() else { return false }
     do {
-      try await client.removePhoto(photoID, fromPlaylist: playlistID)
+      try await withClient { try await $0.removePhoto(photoID, fromPlaylist: playlistID) }
       await loadPlaylists(force: true)
       return true
     } catch {
@@ -152,18 +145,16 @@ final class LibraryStore {
 
   func loadFrames(force: Bool = false) async {
     guard force || frames.isEmpty else { return }
-    guard let client = requireClient() else { return }
     do {
-      frames = try await client.fetchFrames()
+      frames = try await withClient { try await $0.fetchFrames() }
     } catch {
       report(error)
     }
   }
 
   func assignPlaylist(_ playlistID: Int, toFrame frameID: Int) async {
-    guard let client = requireClient() else { return }
     do {
-      try await client.assignPlaylist(playlistID, toFrame: frameID)
+      try await withClient { try await $0.assignPlaylist(playlistID, toFrame: frameID) }
       await loadFrames(force: true)
     } catch {
       report(error)
@@ -172,16 +163,17 @@ final class LibraryStore {
 
   // MARK: - Helpers
 
-  private var client: MeuralClient? {
-    URL(string: serverURLString).map(MeuralClient.init)
-  }
-
-  private func requireClient() -> MeuralClient? {
-    guard let client else {
-      errorMessage = "The server address is invalid. Update it in Settings."
-      return nil
+  /// Runs a request with a valid token, re-authenticating and retrying once
+  /// if Meural rejects the token early.
+  private func withClient<T>(_ body: (MeuralClient) async throws -> T) async throws -> T {
+    let token = try await session.validToken()
+    do {
+      return try await body(MeuralClient(token: token))
+    } catch let error as MeuralClientError where error.isUnauthorized {
+      session.invalidateToken()
+      let freshToken = try await session.validToken()
+      return try await body(MeuralClient(token: freshToken))
     }
-    return client
   }
 
   private func report(_ error: Error) {

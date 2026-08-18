@@ -80,7 +80,7 @@ struct PhotosView: View {
             ContentUnavailableView(
               "No Photos",
               systemImage: "photo.on.rectangle.angled",
-              description: Text("Photos from your Meural library will appear here. Check the server address in Settings if nothing loads.")
+              description: Text("Photos from your Meural library will appear here.")
             )
           }
         }
@@ -99,7 +99,7 @@ struct PhotosView: View {
           }
         }
       }
-      .task(id: library.serverURLString) {
+      .task {
         await library.loadInitialPhotos()
         await library.loadPlaylists()
       }

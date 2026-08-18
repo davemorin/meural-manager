@@ -49,7 +49,7 @@ struct FramesView: View {
           )
         }
       }
-      .task(id: library.serverURLString) {
+      .task {
         await library.loadFrames()
         await library.loadPlaylists()
       }

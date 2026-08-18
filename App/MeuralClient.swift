@@ -1,8 +1,10 @@
 import Foundation
 
-/// Thin client for the Meural Manager server's REST API.
+/// Thin client for the Meural REST API.
 struct MeuralClient {
-  var baseURL: URL
+  var token: String
+
+  private static let baseURL = URL(string: "https://api.meural.com/v0")!
 
   // MARK: - Photos
 
@@ -11,51 +13,80 @@ struct MeuralClient {
       URLQueryItem(name: "page", value: String(page)),
       URLQueryItem(name: "count", value: String(count))
     ]
-    let data = try await data(for: "GET", path: "api/items", query: query)
+    let data = try await data(for: "GET", path: "user/items", query: query)
     let envelope = try JSONDecoder().decode(APIEnvelope<[MeuralPhoto]>.self, from: data)
     let photos = envelope.data ?? []
     return (photos, envelope.isLast ?? (photos.count < count))
   }
 
-  func bulkDeletePhotos(ids: [Int]) async throws {
-    _ = try await data(for: "POST", path: "api/items/bulk-delete", body: ["ids": ids])
+  /// Deletes photos one at a time (the API has no bulk endpoint) and
+  /// returns the IDs that were actually deleted.
+  func deletePhotos(ids: [Int]) async throws -> [Int] {
+    var deleted: [Int] = []
+    var firstError: Error?
+    for id in ids {
+      do {
+        _ = try await data(for: "DELETE", path: "items/\(id)")
+        deleted.append(id)
+      } catch {
+        if firstError == nil { firstError = error }
+      }
+    }
+    if deleted.isEmpty, let firstError {
+      throw firstError
+    }
+    return deleted
   }
 
   // MARK: - Playlists
 
   func fetchPlaylists() async throws -> [MeuralPlaylist] {
-    try await decodeEnvelope([MeuralPlaylist].self, from: data(for: "GET", path: "api/galleries"))
+    try await decodeEnvelope([MeuralPlaylist].self, from: data(for: "GET", path: "user/galleries"))
   }
 
   func fetchPlaylistItems(id: Int) async throws -> [MeuralPhoto] {
-    let query = [URLQueryItem(name: "all", value: "true")]
-    return try await decodeEnvelope([MeuralPhoto].self, from: data(for: "GET", path: "api/galleries/\(id)/items", query: query))
+    var allItems: [MeuralPhoto] = []
+    var page = 1
+    let perPage = 100
+    while true {
+      let query = [
+        URLQueryItem(name: "page", value: String(page)),
+        URLQueryItem(name: "count", value: String(perPage))
+      ]
+      let data = try await data(for: "GET", path: "galleries/\(id)/items", query: query)
+      let envelope = try JSONDecoder().decode(APIEnvelope<[MeuralPhoto]>.self, from: data)
+      let items = envelope.data ?? []
+      allItems.append(contentsOf: items)
+      if items.count < perPage || envelope.isLast == true { break }
+      page += 1
+    }
+    return allItems
   }
 
   func createPlaylist(name: String) async throws {
-    _ = try await data(for: "POST", path: "api/galleries", body: ["name": name])
+    _ = try await data(for: "POST", path: "galleries", body: ["name": name])
   }
 
   func deletePlaylist(id: Int) async throws {
-    _ = try await data(for: "DELETE", path: "api/galleries/\(id)")
+    _ = try await data(for: "DELETE", path: "galleries/\(id)")
   }
 
   func addPhoto(_ photoID: Int, toPlaylist playlistID: Int) async throws {
-    _ = try await data(for: "POST", path: "api/galleries/\(playlistID)/items/\(photoID)")
+    _ = try await data(for: "POST", path: "galleries/\(playlistID)/items/\(photoID)")
   }
 
   func removePhoto(_ photoID: Int, fromPlaylist playlistID: Int) async throws {
-    _ = try await data(for: "DELETE", path: "api/galleries/\(playlistID)/items/\(photoID)")
+    _ = try await data(for: "DELETE", path: "galleries/\(playlistID)/items/\(photoID)")
   }
 
   // MARK: - Frames
 
   func fetchFrames() async throws -> [MeuralFrame] {
-    try await decodeEnvelope([MeuralFrame].self, from: data(for: "GET", path: "api/devices"))
+    try await decodeEnvelope([MeuralFrame].self, from: data(for: "GET", path: "user/devices"))
   }
 
   func assignPlaylist(_ playlistID: Int, toFrame frameID: Int) async throws {
-    _ = try await data(for: "POST", path: "api/devices/\(frameID)/galleries/\(playlistID)")
+    _ = try await data(for: "POST", path: "devices/\(frameID)/galleries/\(playlistID)")
   }
 
   // MARK: - Transport
@@ -73,7 +104,7 @@ struct MeuralClient {
   private func decodeEnvelope<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
     let envelope = try JSONDecoder().decode(APIEnvelope<T>.self, from: data)
     if let value = envelope.data { return value }
-    throw MeuralClientError(message: envelope.error ?? "Unexpected response from server.")
+    throw MeuralClientError(message: envelope.error ?? "Unexpected response from Meural.")
   }
 
   private func data(
@@ -82,19 +113,20 @@ struct MeuralClient {
     query: [URLQueryItem] = [],
     body: [String: any Sendable]? = nil
   ) async throws -> Data {
-    guard var components = URLComponents(url: baseURL.appending(path: path), resolvingAgainstBaseURL: false) else {
-      throw MeuralClientError(message: "Invalid server address.")
+    guard var components = URLComponents(url: Self.baseURL.appending(path: path), resolvingAgainstBaseURL: false) else {
+      throw MeuralClientError(message: "Invalid request.")
     }
     if !query.isEmpty {
       components.queryItems = query
     }
     guard let url = components.url else {
-      throw MeuralClientError(message: "Invalid server address.")
+      throw MeuralClientError(message: "Invalid request.")
     }
 
     var request = URLRequest(url: url)
     request.httpMethod = method
     request.timeoutInterval = 30
+    request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
     if let body {
       request.httpBody = try JSONSerialization.data(withJSONObject: body)
       request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -102,8 +134,11 @@ struct MeuralClient {
 
     let (data, response) = try await URLSession.shared.data(for: request)
     if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+      if http.statusCode == 401 {
+        throw MeuralClientError(message: "Your Meural session expired.", isUnauthorized: true)
+      }
       let message = (try? JSONDecoder().decode(ServerErrorPayload.self, from: data))?.error
-      throw MeuralClientError(message: message ?? "The server returned an error (HTTP \(http.statusCode)).")
+      throw MeuralClientError(message: message ?? "Meural returned an error (HTTP \(http.statusCode)).")
     }
     return data
   }
@@ -111,6 +146,7 @@ struct MeuralClient {
 
 struct MeuralClientError: LocalizedError {
   var message: String
+  var isUnauthorized = false
 
   var errorDescription: String? { message }
 }

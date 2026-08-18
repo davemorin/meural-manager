@@ -68,7 +68,7 @@ struct PlaylistsView: View {
           )
         }
       }
-      .task(id: library.serverURLString) {
+      .task {
         await library.loadPlaylists()
       }
     }

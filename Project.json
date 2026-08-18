@@ -30,11 +30,7 @@
             "UIInterfaceOrientationPortrait",
             "UIInterfaceOrientationLandscapeLeft",
             "UIInterfaceOrientationLandscapeRight"
-          ],
-          "NSAppTransportSecurity": {
-            "NSAllowsArbitraryLoads": true
-          },
-          "NSLocalNetworkUsageDescription": "Meural Manager connects to your self-hosted Meural Manager server on your local network to browse and manage your photos, playlists, and frames."
+          ]
         }
       }
     }
