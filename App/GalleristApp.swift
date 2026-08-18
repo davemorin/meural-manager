@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct MeuralManagerApp: App {
+struct GalleristApp: App {
   @State private var session: MeuralSession
   @State private var library: LibraryStore
 

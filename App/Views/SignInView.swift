@@ -19,7 +19,7 @@ struct SignInView: View {
             Image(systemName: "photo.artframe")
               .font(.system(size: 56))
               .foregroundStyle(.tint)
-            Text("Meural Manager")
+            Text("Gallerist")
               .font(.title2.bold())
             Text("Sign in with your Meural account to manage your photos, playlists, and frames.")
               .font(.subheadline)

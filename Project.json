@@ -1,5 +1,5 @@
 {
-  "name": "MeuralManager",
+  "name": "Gallerist",
   "options": {
     "bundleIdPrefix": "com.davemorin",
     "deploymentTarget": {
@@ -7,7 +7,7 @@
     }
   },
   "targets": {
-    "MeuralManager": {
+    "Gallerist": {
       "type": "application",
       "platform": "iOS",
       "sources": [
@@ -24,7 +24,7 @@
       "info": {
         "path": "App/Info.plist",
         "properties": {
-          "CFBundleDisplayName": "Meural Manager",
+          "CFBundleDisplayName": "Gallerist",
           "UILaunchScreen": {},
           "UISupportedInterfaceOrientations": [
             "UIInterfaceOrientationPortrait",
