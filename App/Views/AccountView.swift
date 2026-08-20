@@ -45,7 +45,7 @@ struct AccountView: View {
         Section {
           if albumBuilder.isMatching {
             VStack(alignment: .leading, spacing: 8) {
-              Text("Matching \(min(albumBuilder.completed + 1, albumBuilder.total)) of \(albumBuilder.total)…")
+              Text("\(albumBuilder.activity) — \(min(albumBuilder.completed + 1, albumBuilder.total)) of \(albumBuilder.total)…")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
               ProgressView(value: Double(albumBuilder.completed), total: Double(max(albumBuilder.total, 1)))
@@ -61,6 +61,14 @@ struct AccountView: View {
                 await albumBuilder.buildAlbum(from: library.photos)
               }
             }
+            if albumBuilder.unmatchedCount > 0 {
+              Button("Visual Match \(albumBuilder.unmatchedCount) Remaining", systemImage: "sparkles") {
+                Task {
+                  await library.loadAllPhotos()
+                  await albumBuilder.visualMatch(photos: library.photos)
+                }
+              }
+            }
           }
           if let status = albumBuilder.statusMessage {
             Text(status)
@@ -70,7 +78,7 @@ struct AccountView: View {
         } header: {
           Text("Photos Album")
         } footer: {
-          Text("Finds the original of each Meural photo in your photo library — matched by capture time and dimensions — and collects the originals into an album named \"Artwall\". Nothing is duplicated. Photos whose originals can't be found are skipped, and re-running only processes new photos.")
+          Text("Finds the original of each Meural photo in your photo library — matched by capture time and dimensions — and collects the originals into an album named \"Artwall\". Nothing is duplicated, and re-running only processes new photos. Visual Match compares the images themselves to find originals whose capture info was lost.")
         }
 
         Section("About") {

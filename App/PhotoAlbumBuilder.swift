@@ -2,6 +2,7 @@ import Foundation
 import ImageIO
 import Observation
 import Photos
+import UIKit
 
 /// Rebuilds the Meural library as an album of originals in the user's
 /// Photos library. Each Meural photo is downloaded only to read its
@@ -15,7 +16,10 @@ final class PhotoAlbumBuilder {
   var isMatching = false
   var completed = 0
   var total = 0
+  var activity = "Matching"
   var statusMessage: String?
+
+  var unmatchedCount: Int { unmatched.count }
 
   private var cancelRequested = false
 
@@ -58,6 +62,7 @@ final class PhotoAlbumBuilder {
       return
     }
 
+    activity = "Matching"
     var matchedIDs = matched
     var unmatchedIDs = unmatched
     let pending = photos.filter {
@@ -108,6 +113,167 @@ final class PhotoAlbumBuilder {
       parts.append("\(unmatched.count) had no matching original in your library.")
     }
     return parts.joined(separator: " ")
+  }
+
+  // MARK: - Visual matching
+
+  /// Second pass for photos whose EXIF signature found no original:
+  /// fingerprints the whole photo library once (cached on disk), then
+  /// pairs each unmatched Meural photo with the visually identical asset.
+  func visualMatch(photos: [MeuralPhoto]) async {
+    guard !isMatching else { return }
+    isMatching = true
+    cancelRequested = false
+    statusMessage = nil
+    defer { isMatching = false }
+
+    let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+    guard status == .authorized else {
+      statusMessage = "Artwall needs full Photos access to find your originals. Allow it in Settings → Privacy → Photos."
+      return
+    }
+
+    let albumID: String
+    do {
+      albumID = try await fetchOrCreateAlbumID()
+    } catch {
+      statusMessage = "Couldn't create the \"\(Self.albumName)\" album. \(error.localizedDescription)"
+      return
+    }
+
+    let targets = photos.filter { unmatched.contains($0.id) && $0.sizeProbeURL != nil }
+    guard !targets.isEmpty else {
+      statusMessage = "No unmatched photos to retry."
+      return
+    }
+
+    var index = loadHashIndex()
+    let allIDs = await Self.allImageAssetIDs()
+    let missing = allIDs.filter { index[$0] == nil }
+    if !missing.isEmpty {
+      activity = "Fingerprinting library"
+      total = missing.count
+      completed = 0
+      for chunk in missing.chunked(into: 200) {
+        if cancelRequested { break }
+        let hashes = await Self.hashAssets(ids: chunk)
+        index.merge(hashes) { _, new in new }
+        completed += chunk.count
+      }
+      saveHashIndex(index)
+    }
+    if cancelRequested {
+      statusMessage = "Paused — run Visual Match again to continue."
+      return
+    }
+
+    activity = "Visual matching"
+    total = targets.count
+    completed = 0
+    var matchedIDs = matched
+    var unmatchedIDs = unmatched
+    var newMatches = 0
+    for photo in targets {
+      if cancelRequested { break }
+      if let url = photo.sizeProbeURL,
+         let data = await Self.download(url, rangeBytes: nil),
+         let hash = PerceptualHash.dHash(fromImageData: data),
+         let assetID = Self.bestVisualMatch(for: hash, in: index) {
+        do {
+          try await add(assetID: assetID, toAlbum: albumID)
+          matchedIDs.insert(photo.id)
+          unmatchedIDs.remove(photo.id)
+          matched = matchedIDs
+          unmatched = unmatchedIDs
+          newMatches += 1
+        } catch {
+          // Leave it unmatched so the next run retries.
+        }
+      }
+      completed += 1
+    }
+
+    if cancelRequested {
+      statusMessage = "Paused at \(completed) of \(total) — run Visual Match again to continue."
+    } else {
+      statusMessage = "Visually matched \(newMatches) more photos. \(unmatchedIDs.count) still have no match."
+    }
+  }
+
+  private nonisolated static func allImageAssetIDs() async -> [String] {
+    let fetch = PHAsset.fetchAssets(with: .image, options: nil)
+    var ids: [String] = []
+    fetch.enumerateObjects { asset, _, _ in
+      ids.append(asset.localIdentifier)
+    }
+    return ids
+  }
+
+  private nonisolated static func hashAssets(ids: [String]) async -> [String: UInt64] {
+    let assets = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
+    let manager = PHImageManager.default()
+    let options = PHImageRequestOptions()
+    options.isSynchronous = true
+    options.deliveryMode = .fastFormat
+    options.resizeMode = .fast
+    options.isNetworkAccessAllowed = false
+    var hashes: [String: UInt64] = [:]
+    assets.enumerateObjects { asset, _, _ in
+      manager.requestImage(
+        for: asset,
+        targetSize: CGSize(width: 64, height: 64),
+        contentMode: .aspectFit,
+        options: options
+      ) { image, _ in
+        if let cgImage = image?.cgImage, let hash = PerceptualHash.dHash(from: cgImage) {
+          hashes[asset.localIdentifier] = hash
+        }
+      }
+    }
+    return hashes
+  }
+
+  /// Accepts the closest fingerprint only when it is near-identical, or
+  /// clearly better than the runner-up.
+  private nonisolated static func bestVisualMatch(for hash: UInt64, in index: [String: UInt64]) -> String? {
+    var best: (id: String, distance: Int)?
+    var runnerUp = Int.max
+    for (id, candidate) in index {
+      let distance = PerceptualHash.distance(hash, candidate)
+      if let current = best {
+        if distance < current.distance {
+          runnerUp = current.distance
+          best = (id, distance)
+        } else if distance < runnerUp {
+          runnerUp = distance
+        }
+      } else {
+        best = (id, distance)
+      }
+    }
+    guard let best else { return nil }
+    if best.distance <= 6 { return best.id }
+    if best.distance <= 10, runnerUp - best.distance >= 4 { return best.id }
+    return nil
+  }
+
+  private var hashIndexFileURL: URL {
+    let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    return directory.appending(path: "photo-hash-index.json")
+  }
+
+  private func loadHashIndex() -> [String: UInt64] {
+    guard let data = try? Data(contentsOf: hashIndexFileURL),
+          let raw = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
+    return raw.compactMapValues { UInt64($0, radix: 16) }
+  }
+
+  private func saveHashIndex(_ index: [String: UInt64]) {
+    let raw = index.mapValues { String($0, radix: 16) }
+    if let data = try? JSONEncoder().encode(raw) {
+      try? data.write(to: hashIndexFileURL)
+    }
   }
 
   // MARK: - Matching
