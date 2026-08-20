@@ -124,8 +124,8 @@ final class LibraryStore {
     await fetchMissingSizes()
   }
 
-  /// Loads every remaining page so size sorting covers the whole library.
-  private func loadAllPhotos() async {
+  /// Loads every remaining page so size sorting and backup cover the whole library.
+  func loadAllPhotos() async {
     while hasMorePhotos {
       let before = photos.count
       await loadNextPhotoPage(replacing: false)

@@ -3,6 +3,7 @@ import SwiftUI
 struct AccountView: View {
   @Environment(MeuralSession.self) private var session
   @Environment(LibraryStore.self) private var library
+  @Environment(PhotoBackupManager.self) private var backup
   @State private var confirmingSignOut = false
 
   var body: some View {
@@ -39,6 +40,37 @@ struct AccountView: View {
               ProgressView()
             }
           }
+        }
+
+        Section {
+          if backup.isBackingUp {
+            VStack(alignment: .leading, spacing: 8) {
+              Text("Backing up \(min(backup.completed + 1, backup.total)) of \(backup.total)…")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+              ProgressView(value: Double(backup.completed), total: Double(max(backup.total, 1)))
+            }
+            .padding(.vertical, 4)
+            Button("Pause Backup") {
+              backup.cancel()
+            }
+          } else {
+            Button("Back Up Library to Photos", systemImage: "square.and.arrow.down.on.square") {
+              Task {
+                await library.loadAllPhotos()
+                await backup.backUp(library.photos)
+              }
+            }
+          }
+          if let status = backup.statusMessage {
+            Text(status)
+              .font(.footnote)
+              .foregroundStyle(.secondary)
+          }
+        } header: {
+          Text("Backup")
+        } footer: {
+          Text("Saves every photo in your Meural library to an album named \"Artwall\" in your Photos library. Photos already backed up are skipped, so you can run it again anytime to pick up new uploads.")
         }
 
         Section("About") {
