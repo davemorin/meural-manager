@@ -68,6 +68,12 @@ struct AccountView: View {
                   await albumBuilder.visualMatch(photos: library.photos)
                 }
               }
+              Button("Save Copies of \(albumBuilder.unmatchedCount) Remaining", systemImage: "square.and.arrow.down") {
+                Task {
+                  await library.loadAllPhotos()
+                  await albumBuilder.saveCopies(photos: library.photos)
+                }
+              }
             }
           }
           if let status = albumBuilder.statusMessage {
@@ -78,7 +84,7 @@ struct AccountView: View {
         } header: {
           Text("Photos Album")
         } footer: {
-          Text("Finds the original of each Meural photo in your photo library — matched by capture time and dimensions — and collects the originals into an album named \"Artwall\". Nothing is duplicated, and re-running only processes new photos. Visual Match compares the images themselves to find originals whose capture info was lost.")
+          Text("Builds a complete archive of your Meural library in an album named \"Artwall\": originals are matched by capture time, Visual Match pairs the rest by comparing the images themselves, and Save Copies imports anything that has no original on this device. Once the album holds everything, it's safe to delete photos from Meural to free up storage.")
         }
 
         Section("About") {

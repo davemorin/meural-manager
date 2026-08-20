@@ -200,6 +200,83 @@ final class PhotoAlbumBuilder {
     }
   }
 
+  // MARK: - Copy fallback
+
+  /// Last resort for photos with no local original anywhere: imports the
+  /// Meural copy itself into the album so nothing is lost when the cloud
+  /// library is wiped.
+  func saveCopies(photos: [MeuralPhoto]) async {
+    guard !isMatching else { return }
+    isMatching = true
+    cancelRequested = false
+    statusMessage = nil
+    defer { isMatching = false }
+
+    let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+    guard status == .authorized else {
+      statusMessage = "Artwall needs full Photos access. Allow it in Settings → Privacy → Photos."
+      return
+    }
+
+    let albumID: String
+    do {
+      albumID = try await fetchOrCreateAlbumID()
+    } catch {
+      statusMessage = "Couldn't create the \"\(Self.albumName)\" album. \(error.localizedDescription)"
+      return
+    }
+
+    let targets = photos.filter { unmatched.contains($0.id) && $0.sizeProbeURL != nil }
+    guard !targets.isEmpty else {
+      statusMessage = "No remaining photos to copy."
+      return
+    }
+
+    activity = "Saving copies"
+    total = targets.count
+    completed = 0
+    var matchedIDs = matched
+    var unmatchedIDs = unmatched
+    var saved = 0
+    for photo in targets {
+      if cancelRequested { break }
+      if let url = photo.sizeProbeURL,
+         let data = await Self.download(url, rangeBytes: nil) {
+        do {
+          try await saveCopy(data: data, toAlbum: albumID)
+          matchedIDs.insert(photo.id)
+          unmatchedIDs.remove(photo.id)
+          matched = matchedIDs
+          unmatched = unmatchedIDs
+          saved += 1
+        } catch {
+          // Leave it unmatched so the next run retries.
+        }
+      }
+      completed += 1
+    }
+
+    if cancelRequested {
+      statusMessage = "Paused at \(completed) of \(total) — run Save Copies again to continue."
+    } else if unmatchedIDs.isEmpty {
+      statusMessage = "Saved \(saved) copies. Every photo in your Meural library is now in the \"\(Self.albumName)\" album."
+    } else {
+      statusMessage = "Saved \(saved) copies. \(unmatchedIDs.count) failed — run Save Copies again to retry."
+    }
+  }
+
+  private func saveCopy(data: Data, toAlbum albumID: String) async throws {
+    try await PHPhotoLibrary.shared().performChanges {
+      let creation = PHAssetCreationRequest.forAsset()
+      creation.addResource(with: .photo, data: data, options: nil)
+      if let placeholder = creation.placeholderForCreatedAsset,
+         let album = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [albumID], options: nil).firstObject,
+         let change = PHAssetCollectionChangeRequest(for: album) {
+        change.addAssets([placeholder] as NSArray)
+      }
+    }
+  }
+
   private nonisolated static func allImageAssetIDs() async -> [String] {
     let fetch = PHAsset.fetchAssets(with: .image, options: nil)
     var ids: [String] = []
