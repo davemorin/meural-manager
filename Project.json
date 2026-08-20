@@ -27,8 +27,7 @@
         "properties": {
           "CFBundleDisplayName": "Artwall",
           "ITSAppUsesNonExemptEncryption": false,
-          "NSPhotoLibraryUsageDescription": "Artwall saves copies of your Meural photos into an album in your photo library so your collection is backed up.",
-          "NSPhotoLibraryAddUsageDescription": "Artwall saves copies of your Meural photos into an album in your photo library so your collection is backed up.",
+          "NSPhotoLibraryUsageDescription": "Artwall finds the originals of your Meural photos in your photo library and collects them into an album — nothing is copied or modified.",
           "UILaunchScreen": {},
           "UISupportedInterfaceOrientations": [
             "UIInterfaceOrientationPortrait",

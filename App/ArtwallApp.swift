@@ -4,7 +4,7 @@ import SwiftUI
 struct ArtwallApp: App {
   @State private var session: MeuralSession
   @State private var library: LibraryStore
-  @State private var backup = PhotoBackupManager()
+  @State private var albumBuilder = PhotoAlbumBuilder()
 
   init() {
     let session = MeuralSession()
@@ -17,7 +17,7 @@ struct ArtwallApp: App {
       ContentView()
         .environment(session)
         .environment(library)
-        .environment(backup)
+        .environment(albumBuilder)
     }
   }
 }

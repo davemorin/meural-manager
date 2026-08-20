@@ -3,7 +3,7 @@ import SwiftUI
 struct AccountView: View {
   @Environment(MeuralSession.self) private var session
   @Environment(LibraryStore.self) private var library
-  @Environment(PhotoBackupManager.self) private var backup
+  @Environment(PhotoAlbumBuilder.self) private var albumBuilder
   @State private var confirmingSignOut = false
 
   var body: some View {
@@ -43,34 +43,34 @@ struct AccountView: View {
         }
 
         Section {
-          if backup.isBackingUp {
+          if albumBuilder.isMatching {
             VStack(alignment: .leading, spacing: 8) {
-              Text("Backing up \(min(backup.completed + 1, backup.total)) of \(backup.total)…")
+              Text("Matching \(min(albumBuilder.completed + 1, albumBuilder.total)) of \(albumBuilder.total)…")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-              ProgressView(value: Double(backup.completed), total: Double(max(backup.total, 1)))
+              ProgressView(value: Double(albumBuilder.completed), total: Double(max(albumBuilder.total, 1)))
             }
             .padding(.vertical, 4)
-            Button("Pause Backup") {
-              backup.cancel()
+            Button("Pause") {
+              albumBuilder.cancel()
             }
           } else {
-            Button("Back Up Library to Photos", systemImage: "square.and.arrow.down.on.square") {
+            Button("Collect Originals into Album", systemImage: "photo.badge.checkmark") {
               Task {
                 await library.loadAllPhotos()
-                await backup.backUp(library.photos)
+                await albumBuilder.buildAlbum(from: library.photos)
               }
             }
           }
-          if let status = backup.statusMessage {
+          if let status = albumBuilder.statusMessage {
             Text(status)
               .font(.footnote)
               .foregroundStyle(.secondary)
           }
         } header: {
-          Text("Backup")
+          Text("Photos Album")
         } footer: {
-          Text("Saves every photo in your Meural library to an album named \"Artwall\" in your Photos library. Photos already backed up are skipped, so you can run it again anytime to pick up new uploads.")
+          Text("Finds the original of each Meural photo in your photo library — matched by capture time and dimensions — and collects the originals into an album named \"Artwall\". Nothing is duplicated. Photos whose originals can't be found are skipped, and re-running only processes new photos.")
         }
 
         Section("About") {
