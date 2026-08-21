@@ -266,12 +266,15 @@ final class PhotoAlbumBuilder {
   }
 
   private func saveCopy(data: Data, toAlbum albumID: String) async throws {
+    guard let album = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [albumID], options: nil).firstObject else {
+      throw MeuralClientError(message: "The album could not be found.")
+    }
+    let boxed = UncheckedSendable(album)
     try await PHPhotoLibrary.shared().performChanges {
       let creation = PHAssetCreationRequest.forAsset()
       creation.addResource(with: .photo, data: data, options: nil)
       if let placeholder = creation.placeholderForCreatedAsset,
-         let album = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [albumID], options: nil).firstObject,
-         let change = PHAssetCollectionChangeRequest(for: album) {
+         let change = PHAssetCollectionChangeRequest(for: boxed.value) {
         change.addAssets([placeholder] as NSArray)
       }
     }
@@ -457,12 +460,17 @@ final class PhotoAlbumBuilder {
 
   // MARK: - Album
 
+  // PhotoKit forbids fetching objects inside a performChanges block, so
+  // albums and assets are always fetched first and passed in.
   private func add(assetID: String, toAlbum albumID: String) async throws {
+    guard let album = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [albumID], options: nil).firstObject,
+          let asset = PHAsset.fetchAssets(withLocalIdentifiers: [assetID], options: nil).firstObject else {
+      throw MeuralClientError(message: "The album or photo could not be found.")
+    }
+    let boxed = UncheckedSendable((album: album, asset: asset))
     try await PHPhotoLibrary.shared().performChanges {
-      guard let album = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [albumID], options: nil).firstObject,
-            let asset = PHAsset.fetchAssets(withLocalIdentifiers: [assetID], options: nil).firstObject,
-            let change = PHAssetCollectionChangeRequest(for: album) else { return }
-      change.addAssets([asset] as NSArray)
+      guard let change = PHAssetCollectionChangeRequest(for: boxed.value.album) else { return }
+      change.addAssets([boxed.value.asset] as NSArray)
     }
   }
 

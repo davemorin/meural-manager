@@ -37,9 +37,17 @@ struct LossyArray<Element: Decodable>: Decodable {
     while !container.isAtEnd {
       if let element = try? container.decode(Element.self) {
         elements.append(element)
-      } else {
-        _ = try? container.decode(AnyElement.self)
+        continue
       }
+      // Skip the bad element, consuming it whatever its JSON type;
+      // bail out entirely rather than risk never advancing.
+      if (try? container.decode(AnyElement.self)) != nil { continue }
+      if (try? container.decodeNil()) == true { continue }
+      if (try? container.decode(String.self)) != nil { continue }
+      if (try? container.decode(Double.self)) != nil { continue }
+      if (try? container.decode(Bool.self)) != nil { continue }
+      if (try? container.decode([AnyElement].self)) != nil { continue }
+      break
     }
   }
 }
