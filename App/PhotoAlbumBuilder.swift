@@ -25,7 +25,42 @@ final class PhotoAlbumBuilder {
 
   private static let matchedKey = "matchedPhotoIDs"
   private static let unmatchedKey = "unmatchedPhotoIDs"
+  private static let breadcrumbKey = "albumBuilderStage"
   private static let albumName = "Artwall"
+
+  init() {
+    // A breadcrumb left over from a previous launch means that run
+    // never finished — surface where it stopped.
+    if let stage = UserDefaults.standard.string(forKey: Self.breadcrumbKey) {
+      statusMessage = "The previous run stopped unexpectedly during: \(stage). Please try again and report this step if it repeats."
+      UserDefaults.standard.removeObject(forKey: Self.breadcrumbKey)
+    }
+  }
+
+  private func breadcrumb(_ stage: String?) {
+    if let stage {
+      UserDefaults.standard.set(stage, forKey: Self.breadcrumbKey)
+    } else {
+      UserDefaults.standard.removeObject(forKey: Self.breadcrumbKey)
+    }
+  }
+
+  /// Requests Photos access, refusing gracefully (instead of letting iOS
+  /// terminate the app) if this build is missing the usage description.
+  private func requestPhotosAccess() async -> Bool {
+    guard Bundle.main.object(forInfoDictionaryKey: "NSPhotoLibraryUsageDescription") != nil else {
+      statusMessage = "This build is missing its photo library permission text, so iOS won't allow Photos access. Please install the newest TestFlight build."
+      return false
+    }
+    breadcrumb("Requesting Photos access")
+    let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+    guard status == .authorized else {
+      breadcrumb(nil)
+      statusMessage = "Artwall needs full Photos access to build the album. Allow it in Settings → Privacy → Photos."
+      return false
+    }
+    return true
+  }
 
   private var matched: Set<Int> {
     get { Set(UserDefaults.standard.array(forKey: Self.matchedKey) as? [Int] ?? []) }
@@ -48,12 +83,10 @@ final class PhotoAlbumBuilder {
     statusMessage = nil
     defer { isMatching = false }
 
-    let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
-    guard status == .authorized else {
-      statusMessage = "Artwall needs full Photos access to find your originals. Allow it in Settings → Privacy → Photos."
-      return
-    }
+    guard await requestPhotosAccess() else { return }
+    defer { breadcrumb(nil) }
 
+    breadcrumb("Preparing the album")
     let albumID: String
     do {
       albumID = try await fetchOrCreateAlbumID()
@@ -79,6 +112,7 @@ final class PhotoAlbumBuilder {
     var newMisses = 0
     for photo in pending {
       if cancelRequested { break }
+      breadcrumb("Matching photo \(completed + 1) of \(total)")
       if let assetID = await matchAsset(for: photo) {
         do {
           try await add(assetID: assetID, toAlbum: albumID)
@@ -127,12 +161,10 @@ final class PhotoAlbumBuilder {
     statusMessage = nil
     defer { isMatching = false }
 
-    let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
-    guard status == .authorized else {
-      statusMessage = "Artwall needs full Photos access to find your originals. Allow it in Settings → Privacy → Photos."
-      return
-    }
+    guard await requestPhotosAccess() else { return }
+    defer { breadcrumb(nil) }
 
+    breadcrumb("Preparing the album")
     let albumID: String
     do {
       albumID = try await fetchOrCreateAlbumID()
@@ -156,6 +188,7 @@ final class PhotoAlbumBuilder {
       completed = 0
       for chunk in missing.chunked(into: 200) {
         if cancelRequested { break }
+        breadcrumb("Fingerprinting library (\(completed) of \(total))")
         let hashes = await Self.hashAssets(ids: chunk)
         index.merge(hashes) { _, new in new }
         completed += chunk.count
@@ -175,6 +208,7 @@ final class PhotoAlbumBuilder {
     var newMatches = 0
     for photo in targets {
       if cancelRequested { break }
+      breadcrumb("Visually matching photo \(completed + 1) of \(total)")
       if let url = photo.sizeProbeURL,
          let data = await Self.download(url, rangeBytes: nil),
          let hash = PerceptualHash.dHash(fromImageData: data),
@@ -212,12 +246,10 @@ final class PhotoAlbumBuilder {
     statusMessage = nil
     defer { isMatching = false }
 
-    let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
-    guard status == .authorized else {
-      statusMessage = "Artwall needs full Photos access. Allow it in Settings → Privacy → Photos."
-      return
-    }
+    guard await requestPhotosAccess() else { return }
+    defer { breadcrumb(nil) }
 
+    breadcrumb("Preparing the album")
     let albumID: String
     do {
       albumID = try await fetchOrCreateAlbumID()
@@ -240,6 +272,7 @@ final class PhotoAlbumBuilder {
     var saved = 0
     for photo in targets {
       if cancelRequested { break }
+      breadcrumb("Saving copy \(completed + 1) of \(total)")
       if let url = photo.sizeProbeURL,
          let data = await Self.download(url, rangeBytes: nil) {
         do {
